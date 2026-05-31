@@ -1,4 +1,4 @@
-package com.example.wiki_project.document.application
+package com.example.wiki_project.searchhistory.application
 
 import com.example.wiki_project.document.infrastructure.client.PythonClientConfig
 import com.example.wiki_project.searchhistory.application.SearchHistoryService
@@ -16,7 +16,6 @@ class SearchUsecase(
     /**
      * 전체 RAG 자연어 지능형 검색 흐름 관제 파이프라인
      */
-    @Transactional
     suspend fun executeSearch(
         memberId: Long,
         query: String,

@@ -69,7 +69,7 @@ class DocumentServiceTest {
         ).toEntity()
 
         // Mocking 선언
-        `when`(documentRepository.save(any(savedEntity::class.java))).thenReturn(savedEntity)
+        `when`(documentRepository.save(any())).thenReturn(savedEntity)
         `when`(redisTemplate.opsForStream<String, String>()).thenReturn(streamOperations)
 
         // when
@@ -105,7 +105,7 @@ class DocumentServiceTest {
             createdBy = command.uploaderId
         ).toEntity()
 
-        `when`(documentRepository.save(any(invalidEntity::class.java))).thenReturn(invalidEntity)
+        `when`(documentRepository.save(any())).thenReturn(invalidEntity)
 
         // when & then
         val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
@@ -185,6 +185,55 @@ class DocumentServiceTest {
             assertThatThrownBy { documentService.deleteDocument(docId, requesterId = hackerId, isAdmin = false) }
                 .isInstanceOf(IllegalStateException::class.java)
                 .hasMessageContaining("해당 문서를 삭제할 권한이 없습니다.")
+        }
+    }
+
+    @Test
+    @DisplayName("이미 삭제된 문서를 조회하면 DOCUMENT_NOT_FOUND 예외를 던진다")
+    fun getDocumentFailWhenDeleted() {
+        val docId = 100L
+        val deletedEntity = DocumentEntity(
+            id = docId, title = "삭제된 문서", contentUrl = "s3://",
+            docType = "PDF", fileSize = 100L, createdBy = 1L, isDeleted = true
+        )
+
+        `when`(documentRepository.findById(docId)).thenReturn(Optional.of(deletedEntity))
+
+        val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+            documentService.getDocumentById(docId, emptyList(), isAdmin = false)
+        }
+        assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND)
+    }
+
+    @Test
+    @DisplayName("문서 소유자가 삭제 요청하면 정상 처리된다")
+    fun deleteSuccessWhenOwner() {
+        val docId = 300L
+        val ownerId = 777L
+        val documentEntity = DocumentEntity(
+            id = docId, title = "내 문서", contentUrl = "s3://",
+            docType = "TXT", fileSize = 10L, createdBy = ownerId, isDeleted = false
+        )
+
+        `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+        `when`(documentRepository.save(any())).thenAnswer { it.arguments[0] }
+
+        documentService.deleteDocument(docId, requesterId = ownerId, isAdmin = false)
+
+        verify(documentRepository).save(any())
+    }
+
+    @Test
+    @DisplayName("이미 완료된 문서를 다시 Processing으로 돌리려 하면 예외가 발생한다")
+    fun startProcessingFailWhenCompleted() {
+        val model = DocumentModel(
+            id = 1L, title = "완료된 문서", contentUrl = "url",
+            docType = "PDF", fileSize = 100L, createdBy = 1L,
+            status = DocumentStatus.COMPLETED
+        )
+
+        org.junit.jupiter.api.assertThrows<IllegalStateException> {
+            model.startProcessing()
         }
     }
 

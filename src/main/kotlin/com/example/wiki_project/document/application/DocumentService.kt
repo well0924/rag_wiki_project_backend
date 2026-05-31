@@ -36,25 +36,49 @@ class DocumentService(
     @Transactional
     suspend fun uploadDocument(command: DocumentUploadCommand): Long = withContext(Dispatchers.IO) {
 
-        // 1. 파일 확장자(docType) 맑게 파싱 (없으면 "UNKNOWN")
+        // 파일 확장자(docType) 맑게 파싱 (없으면 "UNKNOWN")
         val docType = command.originalFilename?.substringAfterLast('.', "UNKNOWN")?.uppercase() ?: "UNKNOWN"
 
-        // 2. 가짜 S3 보류 가드: 임시 URL 먼저 구워내기 (나중에 S3 주입 시 교체할 지점)
+        // 가짜 S3 보류 가드: 임시 URL 먼저 구워내기 (나중에 S3 주입 시 교체할 지점)
         // 주의: 실제 ID 기반으로 URL을 만들려면 영속화가 먼저 필요할 수 있으므로, 임시 범용 경로 규칙으로 조합
-        val dummyContentUrl = "https://wiki-project-bucket.s3.ap-northeast-2.amazonaws.com/documents/pending_$command.title.$docType"
+        val dummyContentUrl = "https://wiki-project-bucket.s3.ap-northeast-2.amazonaws.com/documents/pending_${command.title}.$docType"
 
-        // 3. 네가 정의한 명품 도메인 모델 생성 (기본 상태: UPLOADED)
-        val documentModel = DocumentModel(
+        // RDB 인프라 레이어 저장 및 식별자(ID) 추출
+        val documentId = saveDocumentWithPermissions(command, docType, dummyContentUrl)
+
+        // Redis Streams 'XADD' 비동기 큐잉 처리
+        val event = DocumentUploadedEvent(
+            documentId = documentId.toString(),
+            s3Url = dummyContentUrl,
             title = command.title,
-            contentUrl = dummyContentUrl,
+            uploaderId = command.uploaderId.toString()
+        )
+
+        val record = StringRecord.of(event.toMap()).withStreamKey(STREAM_KEY)
+        redisTemplate.opsForStream<String, String>().add(record)
+
+        documentId
+    }
+
+
+    @Transactional
+    fun saveDocumentWithPermissions(
+        command: DocumentUploadCommand,
+        docType: String,
+        contentUrl: String
+    ): Long {
+
+        // 정의한 명품 도메인 모델 생성 (기본 상태: UPLOADED)
+        val documentEntity = DocumentModel(
+            title = command.title,
+            contentUrl = contentUrl,
             docType = docType,
             fileSize = command.fileSize,
             status = DocumentStatus.UPLOADED,
             createdBy = command.uploaderId
         ).toEntity()
 
-        // 4. RDB 인프라 레이어 저장 및 식별자(ID) 추출
-        val savedDocument = documentRepository.save(documentModel)
+        val savedDocument = documentRepository.save(documentEntity)
         val documentId = savedDocument.id ?: throw BusinessException(ErrorCode.DOCUMENT_SAVE_FAILED)
 
         // 문서 권한 테이블 벌크 생성
@@ -69,20 +93,8 @@ class DocumentService(
             documentPermissionRepository.saveAll(permissions)
         }
 
-        // 5. Redis Streams 'XADD' 비동기 큐잉 처리
-        val event = DocumentUploadedEvent(
-            documentId = documentId.toString(),
-            s3Url = dummyContentUrl,
-            title = command.title,
-            uploaderId = command.uploaderId.toString()
-        )
-
-        val record = StringRecord.of(event.toMap()).withStreamKey(STREAM_KEY)
-        redisTemplate.opsForStream<String, String>().add(record)
-
-        documentId
+        return documentId
     }
-
 
     /**
      * 권한 기반 문서 단건 상세 조회

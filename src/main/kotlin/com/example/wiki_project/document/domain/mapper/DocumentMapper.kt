@@ -2,6 +2,7 @@ package com.example.wiki_project.document.domain.mapper
 
 import com.example.wiki_project.document.domain.entity.DocumentEntity
 import com.example.wiki_project.document.domain.model.DocumentModel
+import com.example.wiki_project.member.domain.mapper.toEntity
 
 fun DocumentEntity.toModel(): DocumentModel = DocumentModel(
     id = this.id,
@@ -12,7 +13,8 @@ fun DocumentEntity.toModel(): DocumentModel = DocumentModel(
     status = this.status,
     createdBy = this.createdBy,
     createdAt = this.createdAt,
-    updatedAt = this.updatedAt
+    updatedAt = this.updatedAt,
+    isDeleted = this.isDeleted
 )
 
 fun DocumentModel.toEntity(): DocumentEntity = DocumentEntity(
@@ -24,5 +26,6 @@ fun DocumentModel.toEntity(): DocumentEntity = DocumentEntity(
     status = this.status,
     createdBy = this.createdBy,
     createdAt = this.createdAt,
-    updatedAt = this.updatedAt
+    updatedAt = this.updatedAt,
+    isDeleted = this.isDeleted
 )
