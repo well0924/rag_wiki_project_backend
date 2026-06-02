@@ -30,14 +30,18 @@ class AuthController(
     @PostMapping("/auth/reissue")
     fun reissue(
         @Parameter(description = "X-Refresh-Token 헤더에 리프레시 토큰 주입")
-        @RequestHeader("X-Refresh-Token") refreshToken: String
+        @RequestHeader("X-Refresh-Token", required = false) refreshToken: String?
     ): ResponseEntity<TokenResponse> {
-        val tokenResponse = authService.reissue(refreshToken)
+
+        val validToken = refreshToken
+            ?: throw io.jsonwebtoken.JwtException("재발급을 위한 리프레시 토큰 헤더가 누락되었습니다.")
+
+        val tokenResponse = authService.reissue(validToken)
         return ResponseEntity.ok(tokenResponse)
     }
 
     @Operation(summary = "로그아웃", description = "현재 사용 중인 토큰을 만료시키고 세션을 파기합니다.", security = [SecurityRequirement(name = "BearerAuth")])
-    @PostMapping("/members/logout")
+    @PostMapping("/auth/logout")
     fun logout(
         request: HttpServletRequest,
         @AuthenticationPrincipal userDetails: CustomUserDetails

@@ -1,6 +1,8 @@
 package com.example.wiki_project.common.exception
 
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
@@ -13,6 +15,13 @@ class GlobalExceptionHandler {
         val errorCode = e.errorCode
         val response = ErrorResponse.of(errorCode)
         return ResponseEntity(response, errorCode.status)
+    }
+
+    @ExceptionHandler(BadCredentialsException::class)
+    fun handleBadCredentials(e: BadCredentialsException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(status = 401, error = "UNAUTHORIZED", message = e.message ?: "인증 실패"))
     }
 
     // 그 외 예상치 못한 런타임 예외 처리

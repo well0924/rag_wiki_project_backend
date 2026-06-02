@@ -18,10 +18,19 @@ class CustomAuthenticationProvider(
         val password = authentication?.credentials.toString()
 
         // DB 또는 캐시에서 유저 정보 긁어오기
-        val userDetails = userDetailsService.loadUserByUsername(email.toString()) as CustomUserDetails
+        val userDetails = try {
+            userDetailsService.loadUserByUsername(email.toString()) as? CustomUserDetails
+        } catch (e: Exception) {
+            e.printStackTrace() // 콘솔에 에러의 본질(NPE, JPA 에러 등)을 빨갛게 출력해줌
+            throw BadCredentialsException("인증 정보 조회 중 에러가 발생했습니다.", e)
+        }
+
+        if (userDetails == null) {
+            throw BadCredentialsException("존재하지 않는 회원입니다.")
+        }
         val member = userDetails.member
 
-        // [보안 가드] Soft Delete된 유저(탈퇴 회원) 로그인 시도 원천 차단
+        // Soft Delete된 유저(탈퇴 회원) 로그인 시도 원천 차단
         if (member.isDeleted) {
             throw BadCredentialsException("탈퇴 처리된 계정입니다.")
             // Security 내부 에러 숨김 원칙을 위해 BadCredentials을 쓰거나,

@@ -33,7 +33,8 @@ class JwtExceptionFilter(
         } catch (e: BadCredentialsException) {
             setErrorResponse(response, ErrorCode.UNAUTHORIZED, e.message ?: "로그아웃된 토큰입니다.")
         } catch (e: Exception) {
-            setErrorResponse(response, ErrorCode.INTERNAL_SERVER_ERROR, "인증 필터 내부 에러가 발생했습니다.")
+            e.printStackTrace()
+            setErrorResponse(response, ErrorCode.INTERNAL_SERVER_ERROR, e.message ?: "인증 필터 내부 에러가 발생했습니다.")
         }
     }
 
@@ -48,5 +49,6 @@ class JwtExceptionFilter(
             message = customMessage
         )
         response.writer.write(objectMapper.writeValueAsString(errorResponse))
+        response.writer.flush()
     }
 }

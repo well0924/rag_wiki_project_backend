@@ -8,6 +8,7 @@ import com.example.wiki_project.member.infrastructure.security.handler.CustomAut
 import com.example.wiki_project.member.infrastructure.security.oauth.CustomOAuth2UserService
 import com.example.wiki_project.member.infrastructure.security.handler.OAuth2FailureHandler
 import com.example.wiki_project.member.infrastructure.security.handler.OAuth2SuccessHandler
+import com.example.wiki_project.member.infrastructure.security.oauth.GoogleOAuth2AuthenticationProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.authentication.AuthenticationManager
@@ -31,7 +32,8 @@ class SecurityConfig(
 
     @Bean
     fun authenticationManager(
-        customAuthenticationManager: CustomAuthenticationManager
+        customAuthenticationManager: CustomAuthenticationManager,
+        googleOAuth2AuthenticationProvider: GoogleOAuth2AuthenticationProvider
     ): AuthenticationManager {
         return customAuthenticationManager
     }
@@ -42,7 +44,6 @@ class SecurityConfig(
             // CSRF 및 Session 비활성화 (Rest API + JWT 환경 정석)
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
-
             // HTTP 요청별 권한 세분화 구성
             .authorizeHttpRequests { auth ->
                 auth
@@ -50,7 +51,6 @@ class SecurityConfig(
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN") // 관리자 영역 격리
                     .anyRequest().authenticated() // 나머지는 전부 인증 필요
             }
-
             // 커스텀 JWT 검증 필터 배치 (UsernamePasswordAuthenticationFilter 직전에 실행)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtExceptionFilter, JwtAuthenticationFilter::class.java)

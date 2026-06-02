@@ -10,7 +10,6 @@ import io.jsonwebtoken.JwtException
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 
 @Service
 class AuthService(
@@ -21,7 +20,7 @@ class AuthService(
 ) {
 
     /**
-     * 로그인 유스케이스
+     * 로그인
      */
     fun login(command: LoginCommand): TokenResponse {
         val authenticationToken = UsernamePasswordAuthenticationToken(command.email, command.password)
@@ -39,27 +38,33 @@ class AuthService(
      * 토큰 재발급(Reissue)
      */
     fun reissue(refreshToken: String): TokenResponse {
-        if (!jwtTokenProvider.validateToken(refreshToken)) {
-            throw JwtException("유효하지 않은 Refresh Token입니다.")
+        try {
+            if (!jwtTokenProvider.validateToken(refreshToken)) {
+                throw JwtException("유효하지 않은 Refresh Token입니다.")
+            }
+
+            val authentication = jwtTokenProvider.getAuthentication(refreshToken)
+            val email = authentication.name
+
+            val savedRefreshToken = tokenRepository.getRefreshToken(email)
+
+            // 레디스에 토큰이 없거나 날아온 토큰과 다르면 탈취로 간주
+            if (savedRefreshToken == null || savedRefreshToken != refreshToken) {
+                tokenRepository.deleteRefreshToken(email)
+                userCacheRepository.deleteUserCache(email)
+                throw JwtException("만료되었거나 일치하지 않는 Refresh Token입니다.")
+            }
+
+            val newAccessToken = jwtTokenProvider.createAccessToken(authentication)
+            val newRefreshToken = jwtTokenProvider.createRefreshToken(email)
+
+            tokenRepository.saveRefreshToken(email, newRefreshToken)
+
+            return TokenResponse(newAccessToken, newRefreshToken)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            throw e
         }
-
-        val authentication = jwtTokenProvider.getAuthentication(refreshToken)
-        val email = authentication.name
-
-        val savedRefreshToken = tokenRepository.getRefreshToken(email)
-        if (savedRefreshToken != refreshToken) {
-            // 탈취 의심 → 저장된 토큰도 즉시 파기
-            tokenRepository.deleteRefreshToken(email)
-            userCacheRepository.deleteUserCache(email)
-            throw JwtException("만료되었거나 일치하지 않는 Refresh Token입니다.")
-        }
-
-        val newAccessToken = jwtTokenProvider.createAccessToken(authentication)
-        val newRefreshToken = jwtTokenProvider.createRefreshToken(email)
-
-        tokenRepository.saveRefreshToken(email, newRefreshToken)
-
-        return TokenResponse(newAccessToken, newRefreshToken)
     }
 
     /**
