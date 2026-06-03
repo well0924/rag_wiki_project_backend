@@ -4,96 +4,99 @@ import com.example.wiki_project.common.exception.BusinessException
 import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.document.application.dto.DocumentUploadCommand
 import com.example.wiki_project.document.application.dto.DocumentUploadedEvent
-import com.example.wiki_project.document.domain.entity.DocumentPermissionJpaEntity
 import com.example.wiki_project.document.domain.mapper.toEntity
 import com.example.wiki_project.document.domain.mapper.toModel
 import com.example.wiki_project.document.domain.model.DocumentModel
 import com.example.wiki_project.document.domain.model.DocumentStatus
-import com.example.wiki_project.document.domain.model.PermissionLevel
 import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
 import com.example.wiki_project.document.infrastructure.DocumentRepository
 import org.springframework.data.redis.connection.stream.StringRecord
-import org.springframework.data.redis.core.StringRedisTemplate
+import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.nio.charset.StandardCharsets
+import java.time.LocalDateTime
 
 @Service
 class DocumentService(
     private val documentRepository: DocumentRepository,
     private val documentPermissionRepository: DocumentPermissionRepository,
-    private val redisTemplate: StringRedisTemplate
+    private val documentCommandRepository: DocumentCommandRepository,
+    private val reactiveRedisTemplate: ReactiveRedisTemplate<String, String>
 ) {
 
     companion object {
         private const val STREAM_KEY = "document:upload:stream"
+        private val ALLOWED_DOC_TYPES = setOf("TXT", "PDF", "DOCX", "MD")
     }
 
     /**
      * 문서 업로드
      **/
-    @Transactional
     suspend fun uploadDocument(command: DocumentUploadCommand): Long = withContext(Dispatchers.IO) {
 
         // 파일 확장자(docType) 맑게 파싱 (없으면 "UNKNOWN")
         val docType = command.originalFilename?.substringAfterLast('.', "UNKNOWN")?.uppercase() ?: "UNKNOWN"
 
+        if (docType !in ALLOWED_DOC_TYPES) {
+            throw BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE)
+        }
         // 가짜 S3 보류 가드: 임시 URL 먼저 구워내기 (나중에 S3 주입 시 교체할 지점)
         // 주의: 실제 ID 기반으로 URL을 만들려면 영속화가 먼저 필요할 수 있으므로, 임시 범용 경로 규칙으로 조합
-        val dummyContentUrl = "https://wiki-project-bucket.s3.ap-northeast-2.amazonaws.com/documents/pending_${command.title}.$docType"
+        // 파일명 오염 방지를 위해 고유한 임시 키 조합 (UUID 활용 추천)
+        val uniqueKey = java.util.UUID.randomUUID().toString()
+        val dummyContentUrl = "https://amazonaws.com${uniqueKey}_${command.title}.$docType"
 
-        // RDB 인프라 레이어 저장 및 식별자(ID) 추출
-        val documentId = saveDocumentWithPermissions(command, docType, dummyContentUrl)
+        // RDB DB 작업은 확실하게 Dispatchers.IO로 격리하여 블로킹 수행
+        val documentId = documentCommandRepository.saveDocumentWithPermissions(command, docType, dummyContentUrl)
+
+        val extractedContent = if (docType == "TXT" || docType == "MD") {
+            String(command.fileBytes, StandardCharsets.UTF_8)
+        } else {
+            "PDF/DOCX 바이너리 메타데이터 컨텍스트 가드선" // PDF 등은 나중에 파이썬이 s3Url로 긁어가게 유도
+        }
 
         // Redis Streams 'XADD' 비동기 큐잉 처리
         val event = DocumentUploadedEvent(
             documentId = documentId.toString(),
+            content = extractedContent,
             s3Url = dummyContentUrl,
             title = command.title,
             uploaderId = command.uploaderId.toString()
         )
 
         val record = StringRecord.of(event.toMap()).withStreamKey(STREAM_KEY)
-        redisTemplate.opsForStream<String, String>().add(record)
+
+        // awaitSingle()을 사용하여 스레드를 차단하지 않고(Non-blocking) 비동기 대기
+        reactiveRedisTemplate.opsForStream<String, String>()
+            .add(record)
+            .awaitSingle()
 
         documentId
     }
 
-
     @Transactional
-    fun saveDocumentWithPermissions(
-        command: DocumentUploadCommand,
-        docType: String,
-        contentUrl: String
-    ): Long {
+    fun updateDocumentStatus(documentId: Long, targetStatus: DocumentStatus) {
+        val entity = documentRepository.findById(documentId)
+            .orElseThrow { BusinessException(ErrorCode.DOCUMENT_NOT_FOUND) }
 
-        // 정의한 명품 도메인 모델 생성 (기본 상태: UPLOADED)
-        val documentEntity = DocumentModel(
-            title = command.title,
-            contentUrl = contentUrl,
-            docType = docType,
-            fileSize = command.fileSize,
-            status = DocumentStatus.UPLOADED,
-            createdBy = command.uploaderId
-        ).toEntity()
+        if (entity.isDeleted) throw BusinessException(ErrorCode.DOCUMENT_NOT_FOUND)
 
-        val savedDocument = documentRepository.save(documentEntity)
-        val documentId = savedDocument.id ?: throw BusinessException(ErrorCode.DOCUMENT_SAVE_FAILED)
-
-        // 문서 권한 테이블 벌크 생성
-        if (command.targetGroupIds.isNotEmpty()) {
-            val permissions = command.targetGroupIds.map { groupId ->
-                DocumentPermissionJpaEntity(
-                    documentId = documentId,
-                    groupId = groupId,
-                    permissionLevel = PermissionLevel.READ
-                )
-            }
-            documentPermissionRepository.saveAll(permissions)
+        // 영속 엔티티를 순수 도메인 모델로 치환하여 비즈니스 유효성 검증 전개
+        var documentModel = entity.toModel()
+        documentModel = when (targetStatus) {
+            DocumentStatus.PROCESSING -> documentModel.startProcessing()
+            DocumentStatus.COMPLETED -> documentModel.completeIndexing()
+            DocumentStatus.FAILED -> documentModel.failIndexing()
+            DocumentStatus.UPLOADED -> throw IllegalArgumentException("이미 업로드된 문서를 초기 UPLOADED 상태로 되돌릴 수 없습니다.")
         }
 
-        return documentId
+        // 도메인 규칙이 반영된 최종 상태를 엔티티에 격 격리 갱신
+        entity.status = documentModel.status
+        entity.updatedAt = LocalDateTime.now()
     }
 
     /**

@@ -22,7 +22,7 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 문서입니다."),
     DOCUMENT_SAVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "문서 엔티티 저장에 실패했습니다."),
     UNAUTHORIZED_DOCUMENT_ACCESS(HttpStatus.UNAUTHORIZED,"접근 권한이 없는 기밀 문서입니다."),
-
+    UNSUPPORTED_DOCUMENT_TYPE(HttpStatus.NOT_FOUND,"지원되지 않는 문서입니다."),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND,"적절한 히스토리 없습니다."),
 
 

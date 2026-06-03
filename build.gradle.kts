@@ -30,6 +30,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    // Reactor와 Coroutine을 연결해주는 핵심 라이브러리 (awaitSingle 등 포함)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
+    // 스프링 데이터 Reactive Redis (Non-blocking Redis 사용 시 필요)
+    implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0")
     // WebClient 사용을 위한 WebFlux 의존성 추가
     implementation("org.springframework.boot:spring-boot-starter-webflux")

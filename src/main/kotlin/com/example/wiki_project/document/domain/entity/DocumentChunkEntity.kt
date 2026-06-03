@@ -22,7 +22,7 @@ class DocumentChunkEntity(
     @Column(columnDefinition = "TEXT", nullable = false)
     val content: String,
 
-    @Column(columnDefinition = "vector(384)")
+    @Column(columnDefinition = "vector(512)")
     val embedding: String? = null
 ) {
     // 검색 결과를 생성할 때 사용할 간단한 변환 로직 정도만 추가

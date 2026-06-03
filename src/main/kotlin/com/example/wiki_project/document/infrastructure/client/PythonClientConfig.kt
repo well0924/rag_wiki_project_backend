@@ -5,11 +5,11 @@ import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchRequest
 import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchResponse
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.context.annotation.Configuration
+import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import org.springframework.web.reactive.function.client.awaitBody
 
-@Configuration
+@Component
 class PythonClientConfig(
     private val webClientBuilder: WebClient.Builder,
     @Value("\${ai.fastapi.url:http://localhost:8000}") private val aiServerUrl: String
@@ -32,6 +32,21 @@ class PythonClientConfig(
                 .awaitBody<PythonSearchResponse>() // 리액티브 WebClient를 코루틴 suspend 사상으로 전환하는 마법의 키!
         } catch (e: Exception) {
             // AI 서버 다운 등 인프라 장애 발생 시 도메인 격리를 위한 예외 치환
+            throw BusinessException(ErrorCode.AI_SERVER_COMMUNICATION_FAILED)
+        }
+    }
+
+    /**
+     * 새벽 배치 작업 시, 삭제된 문서의 벡터 청크 파기를 파이썬 진영에 요청
+     */
+    suspend fun clearVectorChunks(documentId: Long) {
+        try {
+            client.delete()
+                .uri("/api/v1/vector/clear/$documentId")
+                .retrieve()
+                .awaitBody<Unit>() // 리턴 바디가 없는 Unit 규격을 코루틴으로 수신
+        } catch (e: Exception) {
+            // 배치 작업 중 AI 서버 통신 장애가 나면 정합성이 깨지므로 로그를 남기고 예외 전파
             throw BusinessException(ErrorCode.AI_SERVER_COMMUNICATION_FAILED)
         }
     }
