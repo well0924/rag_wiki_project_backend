@@ -2,7 +2,7 @@ package com.example.wiki_project.searchhistory.domain.model
 
 import java.time.LocalDateTime
 
-class SearchHistoryModel(
+data class SearchHistoryModel(
     val id: Long? = null,
     val memberId: Long,
     val query: String,
@@ -15,14 +15,6 @@ class SearchHistoryModel(
      * 비즈니스 규칙: RAG 답변 품질 피드백 토글/업데이트
      */
     fun updateFeedback(isPositive: Boolean): SearchHistoryModel {
-        return SearchHistoryModel(
-            id = this.id,
-            memberId = this.memberId,
-            query = this.query,
-            answer = this.answer,
-            referencedChunkIds = this.referencedChunkIds,
-            feedback = isPositive, // 피드백 상태값 전이
-            createdAt = this.createdAt
-        )
+        return copy(feedback = isPositive)
     }
 }

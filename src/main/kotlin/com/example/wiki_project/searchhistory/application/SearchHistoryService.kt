@@ -80,13 +80,13 @@ class SearchHistoryService(
     }
 
     /**
-     * [어드민 전용] AI가 헛소리한 Worst 답변 목록 추출 (피드백 기반 품질 측정 코어)
+     * [어드민 전용] AI가 헛소리한 Worst 답변 목록 추출
      * 어드민은 이 목록을 보고 Python RAG 진영의 프롬프트를 수정하거나 문서 임베딩을 다시 구워야 함.
      */
     @Transactional(readOnly = true)
     fun getWorstSearchHistoriesForAdmin(isAdmin: Boolean, pageable: Pageable): Page<SearchHistoryModel> {
         if (!isAdmin) {
-            throw BusinessException(ErrorCode.UNAUTHORIZED_DOCUMENT_ACCESS)
+            throw BusinessException(ErrorCode.UNAUTHORIZED)
         }
 
         val entities = searchHistoryRepository.findByFeedbackFalseOrderByIdDesc(pageable)
