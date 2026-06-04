@@ -46,7 +46,9 @@
 
 ```
 wiki_project/
-├── common/                   ← 공통 예외, 에러코드
+├── common/
+│   ├── exception/            ← 공통 예외, 에러코드
+│   └── batch/                ← documentHardDeleteJob (벡터 DB 정합성 배치)
 ├── member/
 │   ├── application/          ← MemberService, AdminService, AuthService
 │   ├── domain/               ← MemberModel(data class), Entity, Mapper
@@ -60,6 +62,8 @@ wiki_project/
     ├── application/          ← SearchUsecase (RAG 파이프라인 파사드)
     └── domain/
 ```
+ 
+---
  
 ---
 
@@ -114,7 +118,45 @@ Spring MVC 위에서 코루틴을 사용할 때 `ThreadLocal` 기반의 Security
  
 ---
 
-## 🗃️ 주요 설계 결정
+## 🗂️ Spring Batch — 벡터 DB 정합성 관리
+
+### 설계 배경
+
+RDB와 Vector DB를 분리한 구조에서 문서 삭제 시 정합성 문제가 발생합니다.  
+Soft Delete로 표시된 문서의 벡터 청크가 Python pgvector에 잔존하면,  
+권한 없는 데이터가 검색 결과에 포함될 수 있습니다.  
+`documentHardDeleteJob`이 정기 실행되어 이를 해소합니다.
+
+### 처리 흐름
+
+```
+[READER]
+JpaPagingItemReader → isDeleted = true 문서를 100건 단위로 페이징 조회
+    ↓
+[PROCESSOR]
+WebClient → DELETE /api/v1/vector/clear/{documentId} 호출
+Python pgvector에서 해당 문서의 벡터 청크 전체 삭제
+    ↓
+[WRITER]
+Python 삭제 확인 후 RDB Hard Delete 수행
+(EntityManager.merge + remove → 배치 트랜잭션 범위 안에서 flush/commit)
+```
+
+### 핵심 설계 포인트
+
+| 항목 | 내용 |
+|---|---|
+| **처리 순서** | Vector DB 삭제 선행 후 RDB Hard Delete — 순서 역전 시 고아 벡터 청크 잔존 위험 |
+| **청크 크기** | 100건 단위 트랜잭션으로 메모리 부하 분산 |
+| **안전 장치** | Processor 실패 시 Writer 미실행 → RDB 데이터 보존 |
+| **트랜잭션 관리** | `PlatformTransactionManager` 위임으로 수동 begin/commit 제거 |
+
+> Soft Delete 이후 배치 실행 전까지 벡터 청크가 잔존하지만,  
+> RDB 권한 테이블(`document_permissions`)에서 이미 접근이 차단되므로 검색 결과에 노출되지 않습니다.
+ 
+---
+
+## 🔥 트러블슈팅
 
 ### 1. UserGroupMemberId 복합키 인덱스 최적화
 
@@ -165,8 +207,6 @@ data class UserCacheData(
  
 ---
 
-## 🔥 트러블슈팅
-
 ### Redis CLI 한글 깨짐 (Windows PowerShell)
 
 Windows PowerShell 기본 인코딩(CP949)과 Python Worker의 UTF-8 디코딩 불일치로 한글이 깨지는 현상 발생.
@@ -203,4 +243,5 @@ AssertJ의 `assertThatThrownBy` 람다 안에서 `suspend` 함수 호출 불가 
 
 ## 🔗 관련 저장소
 
-- Python FastAPI RAG 서버: (링크 추가 예정)
+- Python FastAPI RAG 서버: [rag_wiki_project_backend_ai](https://github.com/well0924/rag_wiki_project_backend_ai)
+ 
