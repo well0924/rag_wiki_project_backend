@@ -65,4 +65,49 @@ class SearchHistoryServiceTest {
         // 💡 any() 대신 위에서 선언한 Non-Null 객체인 'pageable'을 그대로 박아준다!
         verify(searchHistoryRepository, times(0)).findAllByOrderByIdDesc(pageable)
     }
+
+    @Test
+    @DisplayName("존재하지 않는 히스토리 ID로 피드백 평가 시 예외를 던진다")
+    fun updateFeedbackFailWhenNotFound() {
+        `when`(searchHistoryRepository.findById(999L)).thenReturn(Optional.empty())
+
+        assertThrows<BusinessException> {
+            searchHistoryService.evaluateSearchQuality(999L, isPositive = true)
+        }
+    }
+
+    @Test
+    @DisplayName("일반 회원이 Worst 검색 기록 조회를 요청하면 예외를 던진다")
+    fun getWorstHistoryFailWhenNotAdmin() {
+        val pageable = org.springframework.data.domain.PageRequest.of(0, 10)
+
+        assertThrows<BusinessException> {
+            searchHistoryService.getWorstSearchHistoriesForAdmin(isAdmin = false, pageable = pageable)
+        }
+
+        verify(searchHistoryRepository, times(0)).findByFeedbackFalseOrderByIdDesc(pageable)
+    }
+
+    @Test
+    @DisplayName("검색 기록 저장 시 ID가 누락되면 예외를 던진다")
+    fun recordSearchHistoryFailWhenIdNull() {
+        val savedEntity = SearchHistoryEntity(
+            id = null,
+            memberId = 1L,
+            query = "테스트",
+            answer = "답변",
+            referencedChunkIds = emptyList()
+        )
+
+        `when`(searchHistoryRepository.save(any())).thenReturn(savedEntity)
+
+        assertThrows<BusinessException> {
+            searchHistoryService.recordSearchHistory(
+                memberId = 1L,
+                query = "테스트",
+                answer = "답변",
+                referencedChunkIds = emptyList()
+            )
+        }
+    }
 }
