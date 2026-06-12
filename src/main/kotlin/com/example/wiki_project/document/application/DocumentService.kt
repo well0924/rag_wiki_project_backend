@@ -13,6 +13,7 @@ import com.example.wiki_project.document.infrastructure.DocumentRepository
 import org.springframework.data.redis.connection.stream.StringRecord
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Service
@@ -31,6 +32,13 @@ class DocumentService(
     companion object {
         private const val STREAM_KEY = "document:upload:stream"
         private val ALLOWED_DOC_TYPES = setOf("TXT", "PDF", "DOCX", "MD")
+    }
+
+    /**
+    * 문서 업로드 (다중)
+    **/
+    suspend fun uploadDocuments(commends:List<DocumentUploadCommand>):List<Long> = coroutineScope {
+        commends.map { uploadDocument(it) }
     }
 
     /**
@@ -147,5 +155,18 @@ class DocumentService(
 
         // 상태값 역변환 후 영속성 컨텍스트 플러시 반영
         documentRepository.save(deletedModel.toEntity())
+    }
+
+    /**
+     * 문서 다운로드 요청
+     */
+    @Transactional(readOnly = true)
+    fun downloadDocument(documentId: Long, userGroupIds: List<Long>, isAdmin: Boolean): DocumentModel {
+        // 1. 기존 권한 가드 로직 재사용 (이미 잘 만들어져 있음)
+        val document = getDocumentById(documentId, userGroupIds, isAdmin)
+
+        // 2. 다운로드 처리를 위한 모델 반환
+        // 나중에 여기서 s3Service.getPresignedUrl(document.s3Url)을 호출할 예정
+        return document
     }
 }

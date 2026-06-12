@@ -8,6 +8,10 @@ import com.example.wiki_project.document.domain.model.DocumentStatus
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
+import org.springframework.core.io.FileSystemResource
+import org.springframework.core.io.Resource
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -21,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
+import java.io.File
 
 @RestController
 @RequestMapping("/api/v1/documents")
@@ -37,22 +42,24 @@ class DocumentController(
     @PostMapping("/upload", consumes = ["multipart/form-data"])
     suspend fun uploadDocument(
         @Valid @ModelAttribute request: DocumentUploadRequest, // 제목, 업로더 아이디, 그룹 가리개 한방에 수신
-        @RequestPart("file") file: MultipartFile
+        @RequestPart("file") files: List<MultipartFile>
     ): ResponseEntity<Map<String, Any>> {
 
-        require(!file.isEmpty) { "업로드할 파일이 비어있습니다." }
+        require(files.isNotEmpty()) { "업로드할 파일이 비어있습니다." }
 
         // [매핑 레이어] DTO와 멀티파트 정보의 융합을 통한 무결한 Command 객체 생성
-        val command = DocumentUploadCommand(
-            title = request.title,
-            originalFilename = file.originalFilename,
-            fileSize = file.size,
-            fileBytes = file.bytes,
-            uploaderId = request.uploaderId,
-            targetGroupIds = request.targetGroupIds
-        )
+        val command = files.map { file ->
+            DocumentUploadCommand(
+                title = request.title,
+                originalFilename = file.originalFilename,
+                fileSize = file.size,
+                fileBytes = file.bytes,
+                uploaderId = request.uploaderId,
+                targetGroupIds = request.targetGroupIds
+            )
+        }
 
-        val documentId = documentService.uploadDocument(command)
+        val documentId = documentService.uploadDocuments(command)
 
         return ResponseEntity.ok(
             mapOf(
@@ -125,4 +132,28 @@ class DocumentController(
         )
         return ResponseEntity.noContent().build()
     }
+
+    @GetMapping("/{documentId}/download")
+    suspend fun downloadDocument(
+        @PathVariable documentId: Long,
+        @AuthenticationPrincipal user: CustomUserDetails
+    ): ResponseEntity<Resource> {
+
+        // 서비스 호출
+        val document = documentService.downloadDocument(
+            documentId,
+            user.groupIds,
+            user.isAdmin
+        )
+
+        // 파일 로드 (현재는 로컬 경로라 가정, 나중에 S3로 바꾸면 됨)
+        val file = File(document.contentUrl) // 또는 s3Url을 통해 다운로드
+        val resource = FileSystemResource(file)
+
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${document.title}\"")
+            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+            .body(resource)
+    }
+
 }

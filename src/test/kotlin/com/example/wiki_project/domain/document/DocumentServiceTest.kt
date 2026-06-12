@@ -6,7 +6,6 @@ import com.example.wiki_project.document.application.DocumentCommandRepository
 import com.example.wiki_project.document.application.DocumentService
 import com.example.wiki_project.document.application.dto.DocumentUploadCommand
 import com.example.wiki_project.document.domain.entity.DocumentEntity
-import com.example.wiki_project.document.domain.mapper.toEntity
 import com.example.wiki_project.document.domain.model.DocumentModel
 import com.example.wiki_project.document.domain.model.DocumentStatus
 import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
@@ -20,13 +19,12 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
-import org.mockito.Mockito.*
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.kotlin.*
 import org.springframework.data.redis.connection.stream.RecordId
 import org.springframework.data.redis.connection.stream.StringRecord
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.data.redis.core.ReactiveStreamOperations
-import org.springframework.data.redis.core.StreamOperations
 import org.springframework.data.redis.core.StringRedisTemplate
 import reactor.core.publisher.Mono
 import java.util.Optional
@@ -70,21 +68,21 @@ class DocumentServiceTest {
             )
 
             // Mocking 선언
-            `when`(documentCommandRepository.saveDocumentWithPermissions(
+            whenever(documentCommandRepository.saveDocumentWithPermissions(
                 any(DocumentUploadCommand::class.java),
-                anyString(),
-                anyString()
+                any(),
+                any()
             ))
                 .thenReturn(99L)
-            `when`(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
-            `when`(reactiveStreamOperations.add(any(StringRecord::class.java))).thenReturn(Mono.just(RecordId.of("17800000-0")))
+            whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
+            whenever(reactiveStreamOperations.add(any(StringRecord::class.java))).thenReturn(Mono.just(RecordId.of("17800000-0")))
 
             // when
             val resultId = documentService.uploadDocument(command)
 
             // then
             assertThat(resultId).isEqualTo(99L)
-            verify(documentCommandRepository).saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), anyString(), anyString())
+            verify(documentCommandRepository).saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), any())
             verify(reactiveStreamOperations).add(any(StringRecord::class.java)) // Redis Streams XADD 호출 팩트 체크
         }
 
@@ -131,7 +129,7 @@ class DocumentServiceTest {
                 status = DocumentStatus.PROCESSING, isDeleted = false
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
 
             // when
             documentService.updateDocumentStatus(docId, DocumentStatus.COMPLETED)
@@ -151,7 +149,7 @@ class DocumentServiceTest {
                 status = DocumentStatus.COMPLETED, isDeleted = false
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
 
             // when & then
             assertThatThrownBy { documentService.updateDocumentStatus(docId, DocumentStatus.PROCESSING) }
@@ -175,9 +173,9 @@ class DocumentServiceTest {
                 docType = "PDF", fileSize = 2048L, createdBy = 999L, isDeleted = false
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
             // 내가 속한 groupIds 중 이 문서의 접근 권한 목록과 매칭되는 교집합이 없다고 정의 (false)
-            `when`(documentPermissionRepository.hasReadPermission(docId, myGroupIds)).thenReturn(false)
+            whenever(documentPermissionRepository.hasReadPermission(docId, myGroupIds)).thenReturn(false)
 
             // when & then
             val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
@@ -196,7 +194,7 @@ class DocumentServiceTest {
                 docType = "MD", fileSize = 512L, createdBy = 888L, isDeleted = false
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
 
             // when
             val result = documentService.getDocumentById(docId, userGroupIds = emptyList(), isAdmin = true)
@@ -204,7 +202,7 @@ class DocumentServiceTest {
             // then
             assertThat(result.title).isEqualTo("전사 공통 문서")
             // 검증: 어드민이므로 권한 레포지토리의 existsBy...는 단 한 번도 호출되지 않았어야 함 (성능 최적화 증명)
-            verify(documentPermissionRepository, times(0)).hasReadPermission(anyLong(), anyList())
+            verify(documentPermissionRepository, times(0)).hasReadPermission(any(), any())
         }
 
         @Test
@@ -216,7 +214,7 @@ class DocumentServiceTest {
                 docType = "PDF", fileSize = 100L, createdBy = 1L, isDeleted = true
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(deletedEntity))
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(deletedEntity))
 
             val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
                 documentService.getDocumentById(docId, emptyList(), isAdmin = false)
@@ -241,7 +239,7 @@ class DocumentServiceTest {
                 docType = "TXT", fileSize = 10L, createdBy = ownerId, isDeleted = false
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
 
             // when & then
             assertThatThrownBy { documentService.deleteDocument(docId, requesterId = hackerId, isAdmin = false) }
@@ -259,12 +257,12 @@ class DocumentServiceTest {
                 docType = "TXT", fileSize = 10L, createdBy = ownerId, isDeleted = false
             )
 
-            `when`(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
-            `when`(documentRepository.save(any())).thenAnswer { it.arguments[0] }
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
+            doReturn(documentEntity).whenever(documentRepository).save(any<DocumentEntity>())
 
             documentService.deleteDocument(docId, requesterId = ownerId, isAdmin = false)
 
-            verify(documentRepository).save(any())
+            verify(documentRepository).save(any<DocumentEntity>())
         }
 
         @Test
@@ -282,6 +280,55 @@ class DocumentServiceTest {
         }
 
     }
+
+    @Nested
+    @DisplayName("문서 업로드(다중) 검증")
+    inner class UploadDocumentsValidation {
+        @Test
+        @DisplayName("여러 개의 Command가 인입되면 각각 업로드가 수행되어야 한다")
+        fun uploadDocumentsSuccess() = runTest {
+            // given
+            val command1 = DocumentUploadCommand(title="doc1", originalFilename="file1.txt", fileSize=10L, fileBytes="a".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
+            val command2 = DocumentUploadCommand(title="doc2", originalFilename="file2.md", fileSize=10L, fileBytes="b".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
+            val commands = listOf(command1, command2)
+
+            // Mocking: save가 호출될 때마다 순차적으로 ID 리턴하도록 설정
+            whenever(documentCommandRepository.saveDocumentWithPermissions(any(), any(), any()))
+                .thenReturn(1L, 2L)
+            whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
+            whenever(reactiveStreamOperations.add(any())).thenReturn(Mono.just(RecordId.of("1-0")))
+
+            // when
+            val resultIds = documentService.uploadDocuments(commands)
+
+            // then
+            assertThat(resultIds).containsExactly(1L, 2L)
+            verify(documentCommandRepository, times(2)).saveDocumentWithPermissions(any(), any(), any())
+        }
+    }
+
+    @Nested
+    @DisplayName("문서 다운로드(downloadDocument) 검증")
+    inner class DownloadDocumentValidation {
+        @Test
+        @DisplayName("권한이 있는 문서라면 상세 정보(DownloadModel)를 정상 반환한다")
+        fun downloadDocumentSuccess() {
+            // given
+            val docId = 1L
+            val myGroups = listOf(10L)
+            val entity = DocumentEntity(id=docId, title="보고서", contentUrl="s3://path", docType="PDF", fileSize=100L, createdBy=1L, status=DocumentStatus.COMPLETED, isDeleted=false)
+
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(entity))
+            whenever(documentPermissionRepository.hasReadPermission(docId, myGroups)).thenReturn(true)
+
+            // when
+            val result = documentService.downloadDocument(docId, myGroups, isAdmin = false)
+
+            // then
+            assertThat(result.title).isEqualTo("보고서")
+        }
+    }
+
 
     // Mockito 인자 매칭용 유틸 함수 모킹
     private fun <T> any(type: Class<T>): T = org.mockito.Mockito.any(type)
