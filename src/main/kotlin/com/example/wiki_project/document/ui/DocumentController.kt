@@ -1,5 +1,7 @@
 package com.example.wiki_project.document.ui
 
+import com.example.wiki_project.common.exception.BusinessException
+import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.document.application.DocumentService
 import com.example.wiki_project.document.application.dto.DocumentUploadCommand
 import com.example.wiki_project.document.application.dto.DocumentUploadRequest
@@ -41,10 +43,22 @@ class DocumentController(
     @Operation(summary = "위키 문서 업로드", description = "파일 화이트리스트 검증을 통과한 문서를 RDB에 영속화하고 Redis Streams에 비동기 이벤트를 발행합니다.")
     @PostMapping("/upload", consumes = ["multipart/form-data"])
     suspend fun uploadDocument(
+        @AuthenticationPrincipal customUserDetails: CustomUserDetails,
         @Valid @ModelAttribute request: DocumentUploadRequest, // 제목, 업로더 아이디, 그룹 가리개 한방에 수신
         @RequestPart("file") files: List<MultipartFile>
     ): ResponseEntity<Map<String, Any>> {
 
+        val uploaderId = customUserDetails.member.id
+            ?: throw BusinessException(ErrorCode.MEMBER_NOT_FOUND)
+
+        // 💡 2. [보안 방어선] 권한 가드
+        // 만약 일반 유저가 요청한 targetGroupIds가 자기가 소속된 그룹들(userDetails.groupIds)에 포함되지 않는다면 차단
+        if (!customUserDetails.isAdmin) { // 어드민이 아니라면 권한 체크 작동
+            val hasPermission = customUserDetails.groupIds.containsAll(request.targetGroupIds)
+            if (!hasPermission) {
+                throw BusinessException(ErrorCode.FORBIDDEN_DOCUMENT_ACCESS) // 403 에러코드 권한 차단
+            }
+        }
         require(files.isNotEmpty()) { "업로드할 파일이 비어있습니다." }
 
         // [매핑 레이어] DTO와 멀티파트 정보의 융합을 통한 무결한 Command 객체 생성
@@ -54,7 +68,7 @@ class DocumentController(
                 originalFilename = file.originalFilename,
                 fileSize = file.size,
                 fileBytes = file.bytes,
-                uploaderId = request.uploaderId,
+                uploaderId = uploaderId,
                 targetGroupIds = request.targetGroupIds
             )
         }
