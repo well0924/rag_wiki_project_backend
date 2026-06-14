@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository
 @Repository
 interface UserGroupRepository: JpaRepository<UserGroup, Long> {
 
+    fun findByGroupName(groupName: String): UserGroup?
 }
