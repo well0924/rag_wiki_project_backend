@@ -17,11 +17,13 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 유저 그룹입니다."),
     ALREADY_JOINED_GROUP(HttpStatus.BAD_REQUEST,"이미 가입된 그룹입니다."),
     ADMIN_CANNOT_BE_ASSIGNED_TO_GROUP(HttpStatus.BAD_REQUEST,"관리자는 그룹을 할당을 할 수 없습니다."),
+    DUPLICATE_GROUP_NAME(HttpStatus.BAD_REQUEST,"유저 그룹이 중복이 됩니다."),
 
     // Document (새로 추가할 지점)
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 문서입니다."),
     DOCUMENT_SAVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "문서 엔티티 저장에 실패했습니다."),
     UNAUTHORIZED_DOCUMENT_ACCESS(HttpStatus.UNAUTHORIZED,"접근 권한이 없는 기밀 문서입니다."),
+    FORBIDDEN_DOCUMENT_ACCESS(HttpStatus.FORBIDDEN,"해당 그룹에 문서를 업로드하거나 접근할 권한이 없습니다."),
     UNSUPPORTED_DOCUMENT_TYPE(HttpStatus.NOT_FOUND,"지원되지 않는 문서입니다."),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND,"적절한 히스토리 없습니다."),
 
