@@ -9,6 +9,7 @@ import com.example.wiki_project.member.domain.model.UserGroupModel
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupRepository
+import com.example.wiki_project.member.infrastructure.security.UserCacheRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -16,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional
 class GroupService(
     private val userGroupRepository: UserGroupRepository,
     private val userGroupMemberRepository: UserGroupMemberRepository,
-    private val memberRepository: MemberRepository
+    private val memberRepository: MemberRepository,
+    private val userCacheRepository: UserCacheRepository
 ) {
 
     /**
@@ -49,6 +51,9 @@ class GroupService(
                 group = savedGroupEntity
             )
         )
+
+        // 소속 그룹이 바뀌었으므로 인증 캐시 파기 → 다음 요청부터 새 groupIds 반영
+        userCacheRepository.deleteUserCache(memberEntity.email)
 
         // 도메인 규칙에 따라 다시 모델로 변환하여 반환
         return savedGroupEntity.toModel()
@@ -99,6 +104,10 @@ class GroupService(
     fun deleteGroup(groupId: Long) {
         val groupEntity = userGroupRepository.findById(groupId)
             .orElseThrow { BusinessException(ErrorCode.GROUP_NOT_FOUND) }
+
+        // 그룹 해체로 권한이 회수되는 소속 회원들의 인증 캐시 파기
+        userGroupMemberRepository.findByGroup(groupEntity)
+            .forEach { userCacheRepository.deleteUserCache(it.member.email) }
 
         // PostgreSQL 복합 PK 최적화가 적용된 매핑 관계선 데이터 선행 삭제
         userGroupMemberRepository.deleteByGroup(groupEntity)

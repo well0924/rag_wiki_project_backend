@@ -9,6 +9,7 @@ import com.example.wiki_project.member.domain.entity.UserGroupMember
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupRepository
+import com.example.wiki_project.member.infrastructure.security.UserCacheRepository
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -27,6 +28,7 @@ class UserGroupServiceTest {
     @Mock private lateinit var userGroupRepository: UserGroupRepository
     @Mock private lateinit var userGroupMemberRepository: UserGroupMemberRepository
     @Mock private lateinit var memberRepository: MemberRepository
+    @Mock private lateinit var userCacheRepository: UserCacheRepository
 
     @InjectMocks
     private lateinit var groupService: GroupService

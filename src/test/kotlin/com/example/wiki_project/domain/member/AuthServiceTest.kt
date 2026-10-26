@@ -11,6 +11,7 @@ import com.example.wiki_project.member.infrastructure.security.RedisTokenReposit
 import com.example.wiki_project.member.infrastructure.security.UserCacheRepository
 import com.example.wiki_project.member.infrastructure.security.auth.CustomAuthenticationManager
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
+import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetailsService
 import com.example.wiki_project.member.infrastructure.security.jwt.JwtTokenProvider
 import io.jsonwebtoken.JwtException
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -24,6 +25,9 @@ import org.mockito.Mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.springframework.security.core.Authentication
 import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -39,6 +43,7 @@ class AuthServiceTest {
     @Mock private lateinit var tokenRepository: RedisTokenRepository
     @Mock private lateinit var userCacheRepository: UserCacheRepository
     @Mock private lateinit var passwordEncoder: PasswordEncoder
+    @Mock private lateinit var userDetailsService: CustomUserDetailsService
 
     @InjectMocks
     private lateinit var authService: AuthService
@@ -94,7 +99,7 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("유효한 Refresh Token으로 재발급 시 새 토큰 세트를 정상 반환한다")
+    @DisplayName("유효한 Refresh Token으로 재발급 시 캐시/DB의 최신 권한 정보로 새 토큰 세트를 반환한다")
     fun reissueSuccess() {
         // given
         val refreshToken = "valid-refresh-token"
@@ -102,13 +107,14 @@ class AuthServiceTest {
         val memberModel = MemberModel(
             id = 1L, email = email, password = "encrypted", userName = "홍길동", role = Role.ROLE_MEMBER
         )
-        val customUserDetails = CustomUserDetails(member = memberModel, groupIds = emptyList(), isAdmin = false)
-        val authentication = UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.authorities)
+        val customUserDetails = CustomUserDetails(member = memberModel, groupIds = listOf(3L, 7L), isAdmin = false)
 
         `when`(jwtTokenProvider.validateToken(refreshToken)).thenReturn(true)
-        `when`(jwtTokenProvider.getAuthentication(refreshToken)).thenReturn(authentication)
+        `when`(jwtTokenProvider.isRefreshToken(refreshToken)).thenReturn(true)
+        `when`(jwtTokenProvider.getEmail(refreshToken)).thenReturn(email)
         `when`(tokenRepository.getRefreshToken(email)).thenReturn(refreshToken) // 저장된 토큰과 일치
-        `when`(jwtTokenProvider.createAccessToken(authentication)).thenReturn("new-access-token")
+        `when`(userDetailsService.loadUserByUsername(email)).thenReturn(customUserDetails)
+        `when`(jwtTokenProvider.createAccessToken(any())).thenReturn("new-access-token")
         `when`(jwtTokenProvider.createRefreshToken(email)).thenReturn("new-refresh-token")
 
         // when
@@ -118,6 +124,26 @@ class AuthServiceTest {
         assertThat(response.accessToken).isEqualTo("new-access-token")
         assertThat(response.refreshToken).isEqualTo("new-refresh-token")
         verify(tokenRepository).saveRefreshToken(email, "new-refresh-token")
+
+        // 핵심: 재발급된 Access Token에도 그룹 권한(groupIds)과 회원 id가 그대로 유지되어야 한다
+        val captor = argumentCaptor<Authentication>()
+        verify(jwtTokenProvider).createAccessToken(captor.capture())
+        val principal = captor.firstValue.principal as CustomUserDetails
+        assertThat(principal.groupIds).containsExactly(3L, 7L)
+        assertThat(principal.member.id).isEqualTo(1L)
+    }
+
+    @Test
+    @DisplayName("Access Token으로 재발급을 시도하면 예외를 던진다")
+    fun reissueFailWithAccessToken() {
+        // given
+        val accessToken = "access-token"
+        `when`(jwtTokenProvider.validateToken(accessToken)).thenReturn(true)
+        `when`(jwtTokenProvider.isRefreshToken(accessToken)).thenReturn(false)
+
+        // when & then
+        assertThatThrownBy { authService.reissue(accessToken) }
+            .isInstanceOf(JwtException::class.java)
     }
 
     @Test
@@ -126,14 +152,10 @@ class AuthServiceTest {
         // given
         val refreshToken = "stolen-refresh-token"
         val email = "test@company.com"
-        val memberModel = MemberModel(
-            id = 1L, email = email, password = "encrypted", userName = "홍길동", role = Role.ROLE_MEMBER
-        )
-        val customUserDetails = CustomUserDetails(member = memberModel, groupIds = emptyList(), isAdmin = false)
-        val authentication = UsernamePasswordAuthenticationToken(customUserDetails, null, customUserDetails.authorities)
 
         `when`(jwtTokenProvider.validateToken(refreshToken)).thenReturn(true)
-        `when`(jwtTokenProvider.getAuthentication(refreshToken)).thenReturn(authentication)
+        `when`(jwtTokenProvider.isRefreshToken(refreshToken)).thenReturn(true)
+        `when`(jwtTokenProvider.getEmail(refreshToken)).thenReturn(email)
         `when`(tokenRepository.getRefreshToken(email)).thenReturn("different-token") // 불일치
 
         // when & then

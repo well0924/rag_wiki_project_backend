@@ -2,7 +2,6 @@ package com.example.wiki_project.member.ui
 
 import com.example.wiki_project.member.application.MemberService
 import com.example.wiki_project.member.application.dto.*
-import com.example.wiki_project.member.domain.model.MemberModel
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -34,23 +33,23 @@ class MemberController(
         ApiResponse(responseCode = "400", description = "이미 존재하는 이메일 등 중복 오류")
     )
     @PostMapping("/auth/register")
-    fun register(@RequestBody command: UserCreateCommand): ResponseEntity<MemberModel> {
+    fun register(@RequestBody command: UserCreateCommand): ResponseEntity<MemberResponse> {
         val result = memberService.registerMember(command)
-        return ResponseEntity.ok(result)
+        return ResponseEntity.ok(MemberResponse.from(result))
+    }
+
+    @Operation(summary = "내 정보 조회", description = "현재 로그인한 사용자의 프로필 정보를 조회합니다.", security = [SecurityRequirement(name = "BearerAuth")])
+    @GetMapping("/members/me")
+    fun findMe(@AuthenticationPrincipal userDetails: CustomUserDetails): ResponseEntity<MemberResponse> {
+        val memberResponse = memberService.getMemberById(userDetails.member.id!!)
+        return ResponseEntity.ok(MemberResponse.from(memberResponse))
     }
 
     @Operation(summary = "회원 단건 조회", description = "회원의 고유 식별자(ID)로 상세 정보를 조회합니다.")
     @GetMapping("/members/{id}")
-    fun findById(@PathVariable("id") id: Long): ResponseEntity<MemberModel> {
+    fun findById(@PathVariable("id") id: Long): ResponseEntity<MemberResponse> {
         val memberResponse = memberService.getMemberById(id)
-        return ResponseEntity.ok(memberResponse)
-    }
-
-    @Operation(summary = "회원 단건 조회", description = "회원의 고유 이메일로 상세 정보를 조회합니다.")
-    @GetMapping("/members")
-    fun findByEmail(@RequestParam("email") email: String): ResponseEntity<MemberModel> {
-        val memberResponse = memberService.getMemberByEmail(email)
-        return ResponseEntity.ok(memberResponse)
+        return ResponseEntity.ok(MemberResponse.from(memberResponse))
     }
 
     @Operation(summary = "회원 프로필 통합 수정", description = "현재 로그인한 사용자의 프로필 정보(이름 등)를 수정합니다.", security = [SecurityRequirement(name = "BearerAuth")])
@@ -58,10 +57,10 @@ class MemberController(
     fun updateProfile(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestBody command: UserUpdateCommand
-    ): ResponseEntity<MemberModel> {
+    ): ResponseEntity<MemberResponse> {
         val memberId = userDetails.member.id!!
         val updatedMember = memberService.updateMember(memberId, command)
-        return ResponseEntity.ok(updatedMember)
+        return ResponseEntity.ok(MemberResponse.from(updatedMember))
     }
 
     @Operation(summary = "회원 이름 단독 변경", description = "회원의 이름을 전용 비즈니스 로직에 맞춰 변경합니다.", security = [SecurityRequirement(name = "BearerAuth")])
@@ -69,10 +68,10 @@ class MemberController(
     fun updateUserName(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestParam("newName") newName: String
-    ): ResponseEntity<MemberModel> {
+    ): ResponseEntity<MemberResponse> {
         val memberId = userDetails.member.id!!
         val updatedMember = memberService.updateUserName(memberId, newName)
-        return ResponseEntity.ok(updatedMember)
+        return ResponseEntity.ok(MemberResponse.from(updatedMember))
     }
 
     @Operation(summary = "회원 탈퇴 (삭제)", description = "현재 로그인한 사용자의 계정을 Soft Delete 처리하고 세션을 추방합니다.", security = [SecurityRequirement(name = "BearerAuth")])
