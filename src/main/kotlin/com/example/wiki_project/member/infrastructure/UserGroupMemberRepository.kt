@@ -11,5 +11,7 @@ interface UserGroupMemberRepository: JpaRepository<UserGroupMember, UserGroupMem
     // 특정 유저가 속한 그룹 매핑 데이터를 싹 긁어오기 위한 쿼리 메서드
     fun findByMemberId(memberId: Long): List<UserGroupMember>
 
+    fun findByGroup(group: UserGroup): List<UserGroupMember>
+
     fun deleteByGroup(group: UserGroup)
 }

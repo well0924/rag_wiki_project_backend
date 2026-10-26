@@ -1,5 +1,6 @@
 package com.example.wiki_project.common.exception
 
+import io.jsonwebtoken.JwtException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.authentication.BadCredentialsException
@@ -22,6 +23,14 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse(status = 401, error = "UNAUTHORIZED", message = e.message ?: "인증 실패"))
+    }
+
+    // 토큰 재발급 실패 (위조 / 만료 / 탈취 의심 Refresh Token)
+    @ExceptionHandler(JwtException::class)
+    fun handleJwtException(e: JwtException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity
+            .status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(status = 401, error = "UNAUTHORIZED", message = e.message ?: "유효하지 않은 토큰입니다."))
     }
 
     // 그 외 예상치 못한 런타임 예외 처리

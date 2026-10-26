@@ -8,7 +8,9 @@ import com.example.wiki_project.member.domain.model.Role
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.domain.mapper.toModel
 import com.example.wiki_project.member.domain.mapper.toEntity
+import com.example.wiki_project.member.infrastructure.security.RedisTokenRepository
 import com.example.wiki_project.member.infrastructure.security.UserCacheRepository
+import com.example.wiki_project.member.infrastructure.security.jwt.JwtTokenProvider
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -17,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional
 class MemberService(
     private val memberRepository: MemberRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val userCacheRepository: UserCacheRepository
+    private val userCacheRepository: UserCacheRepository,
+    private val tokenRepository: RedisTokenRepository,
+    private val jwtTokenProvider: JwtTokenProvider
 ) {
 
     /**
@@ -97,5 +101,13 @@ class MemberService(
         val withdrawnModel = memberModel.withdraw()
 
         memberRepository.save(withdrawnModel.toEntity())
+
+        // 탈퇴 즉시 세션 파기: 캐시 / Refresh Token 삭제 + Access Token 블랙리스트 등록
+        userCacheRepository.deleteUserCache(memberModel.email)
+        tokenRepository.deleteRefreshToken(memberModel.email)
+        val remainExpirationMs = jwtTokenProvider.getExpiration(accessToken)
+        if (remainExpirationMs > 0) {
+            tokenRepository.addToBlacklist(accessToken, remainExpirationMs)
+        }
     }
 }
