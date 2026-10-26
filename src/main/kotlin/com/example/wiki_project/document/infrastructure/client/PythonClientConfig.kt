@@ -6,16 +6,23 @@ import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchR
 import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchResponse
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import com.example.wiki_project.member.infrastructure.security.filter.InternalApiKeyFilter
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.awaitBodilessEntity
 import org.springframework.web.reactive.function.client.awaitBody
 
 @Component
 class PythonClientConfig(
     private val webClientBuilder: WebClient.Builder,
-    @Value("\${ai.fastapi.url:http://localhost:8000}") private val aiServerUrl: String
+    @Value("\${ai.fastapi.url:http://localhost:8000}") private val aiServerUrl: String,
+    // FastAPI 측 INTERNAL_API_KEY와 동일한 서버 간 공유 키
+    @Value("\${internal.api-key:local-internal-api-key}") private val internalApiKey: String
 ) {
     private val client by lazy {
-        webClientBuilder.baseUrl(aiServerUrl).build()
+        webClientBuilder
+            .baseUrl(aiServerUrl)
+            .defaultHeader(InternalApiKeyFilter.HEADER, internalApiKey)
+            .build()
     }
 
     /**
@@ -42,9 +49,9 @@ class PythonClientConfig(
     suspend fun clearVectorChunks(documentId: Long) {
         try {
             client.delete()
-                .uri("/api/v1/vector/clear/$documentId")
+                .uri("/api/v1/rag/vector/clear/$documentId")
                 .retrieve()
-                .awaitBody<Unit>() // 리턴 바디가 없는 Unit 규격을 코루틴으로 수신
+                .awaitBodilessEntity() // 응답 바디는 사용하지 않고 2xx 여부만 코루틴으로 수신
         } catch (e: Exception) {
             // 배치 작업 중 AI 서버 통신 장애가 나면 정합성이 깨지므로 로그를 남기고 예외 전파
             throw BusinessException(ErrorCode.AI_SERVER_COMMUNICATION_FAILED)

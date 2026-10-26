@@ -6,7 +6,6 @@ import com.example.wiki_project.document.application.DocumentService
 import com.example.wiki_project.document.application.dto.DocumentUploadCommand
 import com.example.wiki_project.document.application.dto.DocumentUploadRequest
 import com.example.wiki_project.document.domain.model.DocumentModel
-import com.example.wiki_project.document.domain.model.DocumentStatus
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
@@ -19,11 +18,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
-import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
@@ -82,20 +79,6 @@ class DocumentController(
                 "message" to "문서 권한 매핑 및 비동기 큐 적재 성공"
             )
         )
-    }
-
-    /**
-     * AI 인덱싱 상태 전이 갱신 API
-     * - 파이썬 AI 컨슈머(청킹/임베딩 파이프라인)가 청킹 진척도에 따라 내부적으로 호출하는 역방향 엔드포인트입니다.
-     */
-    @Operation(summary = "AI 인덱싱 상태 변경 (파이썬 역호출용)", description = "파이썬 컨슈머가 파싱 척도에 따라 PROCESSING, COMPLETED, FAILED 상태로 전이시킵니다.")
-    @PatchMapping("/{documentId}/status")
-    fun updateDocumentStatus(
-        @PathVariable documentId: Long,
-        @RequestParam("status") targetStatus: DocumentStatus
-    ): ResponseEntity<Unit> {
-        documentService.updateDocumentStatus(documentId, targetStatus)
-        return ResponseEntity.ok().build()
     }
 
     /**
