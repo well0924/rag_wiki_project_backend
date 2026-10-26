@@ -2,6 +2,7 @@ package com.example.wiki_project.member.infrastructure.security
 
 import com.example.wiki_project.member.infrastructure.security.auth.CustomAuthenticationManager
 import com.example.wiki_project.member.infrastructure.security.filter.JwtAuthenticationFilter
+import com.example.wiki_project.member.infrastructure.security.filter.InternalApiKeyFilter
 import com.example.wiki_project.member.infrastructure.security.filter.JwtExceptionFilter
 import com.example.wiki_project.member.infrastructure.security.handler.CustomAccessDeniedHandler
 import com.example.wiki_project.member.infrastructure.security.handler.CustomAuthenticationEntryPoint
@@ -27,6 +28,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val jwtExceptionFilter: JwtExceptionFilter,
+    private val internalApiKeyFilter: InternalApiKeyFilter,
     private val customAuthenticationEntryPoint: CustomAuthenticationEntryPoint,
     private val customAccessDeniedHandler: CustomAccessDeniedHandler,
     private val customOAuth2UserService: CustomOAuth2UserService, // 구글 스펙 파싱 서비스 주입
@@ -54,11 +56,13 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/api/v1/auth/**").permitAll() // 로그인, 회원가입 허용
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN") // 관리자 영역 격리
+                    .requestMatchers("/api/v1/internal/**").hasRole("INTERNAL") // AI 서버 전용 내부 API (공유 키 인증)
                     .anyRequest().authenticated() // 나머지는 전부 인증 필요
             }
             // 커스텀 JWT 검증 필터 배치 (UsernamePasswordAuthenticationFilter 직전에 실행)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtExceptionFilter, JwtAuthenticationFilter::class.java)
+            .addFilterBefore(internalApiKeyFilter, JwtAuthenticationFilter::class.java)
             .oauth2Login { oauth2 ->
                 oauth2
                     .userInfoEndpoint { userInfo ->
