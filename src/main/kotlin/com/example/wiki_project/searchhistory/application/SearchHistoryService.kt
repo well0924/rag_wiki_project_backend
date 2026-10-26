@@ -53,9 +53,14 @@ class SearchHistoryService(
      * 유저가 AI의 답변을 보고 따봉(추천)을 누르거나 비추천을 누를 때 품질 메트릭을 동기화
      */
     @Transactional
-    fun evaluateSearchQuality(historyId: Long, isPositive: Boolean) {
+    fun evaluateSearchQuality(historyId: Long, memberId: Long, isPositive: Boolean) {
         val entity = searchHistoryRepository.findById(historyId)
             .orElseThrow { BusinessException(ErrorCode.RESOURCE_NOT_FOUND) } // 적절한 히스토리 없음 에러코드 매핑
+
+        // 타인의 검색 기록에 피드백을 남겨 품질 지표를 오염시키는 것을 차단
+        if (entity.memberId != memberId) {
+            throw BusinessException(ErrorCode.FORBIDDEN_HISTORY_ACCESS)
+        }
 
         // 도메인 모델로 격리 전환 후 피드백 업데이트 비즈니스 규칙 수행
         val model = entity.toModel()
