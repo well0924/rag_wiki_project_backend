@@ -35,10 +35,11 @@ class SearchHistoryController(
     @Operation(summary = "검색 결과 피드백 평가", security = [SecurityRequirement(name = "BearerAuth")])
     @PatchMapping("/{historyId}/feedback")
     fun evaluateFeedback(
+        @AuthenticationPrincipal userDetails: CustomUserDetails,
         @PathVariable historyId: Long,
         @RequestBody request: FeedbackRequest
     ): ResponseEntity<Unit> {
-        searchHistoryService.evaluateSearchQuality(historyId, request.isPositive)
+        searchHistoryService.evaluateSearchQuality(historyId, userDetails.member.id!!, request.isPositive)
         return ResponseEntity.noContent().build()
     }
 

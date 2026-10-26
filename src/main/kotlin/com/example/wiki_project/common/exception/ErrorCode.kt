@@ -26,6 +26,7 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     FORBIDDEN_DOCUMENT_ACCESS(HttpStatus.FORBIDDEN,"해당 그룹에 문서를 업로드하거나 접근할 권한이 없습니다."),
     UNSUPPORTED_DOCUMENT_TYPE(HttpStatus.NOT_FOUND,"지원되지 않는 문서입니다."),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND,"적절한 히스토리 없습니다."),
+    FORBIDDEN_HISTORY_ACCESS(HttpStatus.FORBIDDEN,"본인의 검색 기록에만 피드백을 남길 수 있습니다."),
 
 
     AI_SERVER_COMMUNICATION_FAILED(HttpStatus.REQUEST_TIMEOUT

@@ -1,6 +1,7 @@
 package com.example.wiki_project.domain.searchhistory
 
 import com.example.wiki_project.common.exception.BusinessException
+import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.searchhistory.application.SearchHistoryService
 import com.example.wiki_project.searchhistory.domain.entity.SearchHistoryEntity
 import com.example.wiki_project.searchhistory.infrastructure.SearchHistoryRepository
@@ -41,7 +42,7 @@ class SearchHistoryServiceTest {
         `when`(searchHistoryRepository.save(any())).thenAnswer { it.arguments[0] }
 
         // when
-        searchHistoryService.evaluateSearchQuality(historyId, isPositive = true)
+        searchHistoryService.evaluateSearchQuality(historyId, memberId = 10L, isPositive = true)
 
         // then
         // 캡처 검증: save단에 최종 전달된 엔티티의 feedback이 true로 가공되었는지 팩트 확인
@@ -72,8 +73,31 @@ class SearchHistoryServiceTest {
         `when`(searchHistoryRepository.findById(999L)).thenReturn(Optional.empty())
 
         assertThrows<BusinessException> {
-            searchHistoryService.evaluateSearchQuality(999L, isPositive = true)
+            searchHistoryService.evaluateSearchQuality(999L, memberId = 10L, isPositive = true)
         }
+    }
+
+    @Test
+    @DisplayName("타인의 검색 기록에 피드백을 남기려 하면 403 예외를 던지고 저장하지 않는다")
+    fun updateFeedbackFailWhenNotOwner() {
+        // given
+        val historyId = 1L
+        val othersEntity = SearchHistoryEntity(
+            id = historyId,
+            memberId = 10L, // 기록 소유자
+            query = "JPA 복합키 쓰는법",
+            answer = "IdClass를 쓰시면 됩니다.",
+            referencedChunkIds = emptyList(),
+            feedback = null
+        )
+        `when`(searchHistoryRepository.findById(historyId)).thenReturn(Optional.of(othersEntity))
+
+        // when & then
+        val exception = assertThrows<BusinessException> {
+            searchHistoryService.evaluateSearchQuality(historyId, memberId = 99L, isPositive = false)
+        }
+        Assertions.assertThat(exception.errorCode).isEqualTo(ErrorCode.FORBIDDEN_HISTORY_ACCESS)
+        verify(searchHistoryRepository, times(0)).save(any())
     }
 
     @Test
