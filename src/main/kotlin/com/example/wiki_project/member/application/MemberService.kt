@@ -51,6 +51,13 @@ class MemberService(
         return entity.toModel()
     }
 
+    @Transactional(readOnly = true)
+    fun getMemberByEmail(email:String): MemberModel {
+        val entity = memberRepository.findByEmail(email)?: throw BusinessException(ErrorCode.MEMBER_NOT_FOUND)
+        return entity.toModel()
+    }
+
+
     /**
      * 회원 프로필 수정 (이름 등 통합 수정)
      */

@@ -46,6 +46,13 @@ class MemberController(
         return ResponseEntity.ok(memberResponse)
     }
 
+    @Operation(summary = "회원 단건 조회", description = "회원의 고유 이메일로 상세 정보를 조회합니다.")
+    @GetMapping("/members")
+    fun findByEmail(@RequestParam("email") email: String): ResponseEntity<MemberModel> {
+        val memberResponse = memberService.getMemberByEmail(email)
+        return ResponseEntity.ok(memberResponse)
+    }
+
     @Operation(summary = "회원 프로필 통합 수정", description = "현재 로그인한 사용자의 프로필 정보(이름 등)를 수정합니다.", security = [SecurityRequirement(name = "BearerAuth")])
     @PutMapping("/members/me")
     fun updateProfile(

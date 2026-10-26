@@ -5,9 +5,9 @@ import com.example.wiki_project.member.infrastructure.security.filter.JwtAuthent
 import com.example.wiki_project.member.infrastructure.security.filter.JwtExceptionFilter
 import com.example.wiki_project.member.infrastructure.security.handler.CustomAccessDeniedHandler
 import com.example.wiki_project.member.infrastructure.security.handler.CustomAuthenticationEntryPoint
-import com.example.wiki_project.member.infrastructure.security.oauth.CustomOAuth2UserService
 import com.example.wiki_project.member.infrastructure.security.handler.OAuth2FailureHandler
 import com.example.wiki_project.member.infrastructure.security.handler.OAuth2SuccessHandler
+import com.example.wiki_project.member.infrastructure.security.oauth.CustomOAuth2UserService
 import com.example.wiki_project.member.infrastructure.security.oauth.GoogleOAuth2AuthenticationProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -17,6 +17,10 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.cors.CorsConfigurationSource
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource
+
 
 @Configuration
 @EnableWebSecurity
@@ -43,6 +47,7 @@ class SecurityConfig(
         http
             // CSRF 및 Session 비활성화 (Rest API + JWT 환경 정석)
             .csrf { it.disable() }
+            .cors { it.configurationSource(corsConfigurationSource()) } // cors 추가
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             // HTTP 요청별 권한 세분화 구성
             .authorizeHttpRequests { auth ->
@@ -71,5 +76,25 @@ class SecurityConfig(
             }
 
         return http.build()
+    }
+
+    @Bean
+    fun corsConfigurationSource(): CorsConfigurationSource {
+        val configuration = CorsConfiguration()
+        configuration.allowedOrigins = listOf("http://localhost:3000","http://localhost:89")
+        // 허용할 HTTP 메서드
+        configuration.allowedMethods =
+            listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
+        // 허용할 헤더
+        configuration.allowedHeaders = listOf("Authorization", "Cache-Control", "Content-Type")
+        // 자격 증명 허용 (쿠키, 인증 헤더 등을 포함할 경우 필수)
+        configuration.allowCredentials = true
+        // 노출할 헤더 (필요시 추가)
+        configuration.exposedHeaders = listOf("Authorization")
+        val source: UrlBasedCorsConfigurationSource = UrlBasedCorsConfigurationSource()
+        // 모든 엔드포인트에 위 CORS 설정 적용
+        source.registerCorsConfiguration("/**", configuration)
+
+        return source
     }
 }
