@@ -10,6 +10,7 @@ import com.example.wiki_project.member.infrastructure.security.handler.OAuth2Fai
 import com.example.wiki_project.member.infrastructure.security.handler.OAuth2SuccessHandler
 import com.example.wiki_project.member.infrastructure.security.oauth.CustomOAuth2UserService
 import com.example.wiki_project.member.infrastructure.security.oauth.GoogleOAuth2AuthenticationProvider
+import jakarta.servlet.DispatcherType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -57,6 +58,9 @@ class SecurityConfig(
             // HTTP 요청별 권한 세분화 구성
             .authorizeHttpRequests { auth ->
                 auth
+                    // suspend 컨트롤러는 비동기 디스패치(ASYNC)로 응답을 쓰는데, STATELESS라 이때 SecurityContext가 비어 있음
+                    // → 최초 REQUEST 디스패치에서 이미 인가를 통과했으므로 ASYNC / ERROR 디스패치는 허용 (미설정 시 처리 후 401 응답)
+                    .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                     .requestMatchers("/api/v1/auth/**").permitAll() // 로그인, 회원가입 허용
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN") // 관리자 영역 격리
                     .requestMatchers("/api/v1/internal/**").hasRole("INTERNAL") // AI 서버 전용 내부 API (공유 키 인증)
