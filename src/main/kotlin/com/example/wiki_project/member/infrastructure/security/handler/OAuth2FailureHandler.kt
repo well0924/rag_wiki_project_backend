@@ -2,6 +2,7 @@ package com.example.wiki_project.member.infrastructure.security.handler
 
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler
 import org.springframework.stereotype.Component
 import org.springframework.web.util.UriComponentsBuilder
@@ -9,7 +10,9 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 @Component
-class OAuth2FailureHandler: SimpleUrlAuthenticationFailureHandler() {
+class OAuth2FailureHandler(
+    @Value("\${app.frontend-url:http://localhost:3000}") private val frontendUrl: String
+): SimpleUrlAuthenticationFailureHandler() {
 
     override fun onAuthenticationFailure(
         request: HttpServletRequest,
@@ -23,7 +26,7 @@ class OAuth2FailureHandler: SimpleUrlAuthenticationFailureHandler() {
         val encodedErrorMessage = URLEncoder.encode(errorMessage, StandardCharsets.UTF_8.toString())
 
         // 프론트엔드의 로그인 화면으로 에러 마킹 및 알림용 메시지 얹어서 강제 리다이렉트
-        val targetUrl = UriComponentsBuilder.fromUriString("http://localhost:3000/login")
+        val targetUrl = UriComponentsBuilder.fromUriString("$frontendUrl/login")
             .queryParam("error", true)
             .queryParam("message", encodedErrorMessage)
             .build()

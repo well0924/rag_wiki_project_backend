@@ -8,6 +8,7 @@ import com.example.wiki_project.member.infrastructure.security.oauth.GoogleOAuth
 
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.core.Authentication
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler
@@ -19,7 +20,8 @@ import java.nio.charset.StandardCharsets
 class OAuth2SuccessHandler(
     private val authenticationManager: CustomAuthenticationManager,
     private val jwtTokenProvider: JwtTokenProvider,
-    private val tokenRepository: RedisTokenRepository
+    private val tokenRepository: RedisTokenRepository,
+    @Value("\${app.frontend-url:http://localhost:3000}") private val frontendUrl: String
 ) : SimpleUrlAuthenticationSuccessHandler() {
 
     override fun onAuthenticationSuccess(
@@ -53,7 +55,7 @@ class OAuth2SuccessHandler(
         tokenRepository.saveRefreshToken(userDetails.username, refreshToken)
 
         // 6. 프론트엔드(React 등) 콜백 주소에 토큰을 파라미터로 심어서 우아하게 토스
-        val targetUrl = UriComponentsBuilder.fromUriString("http://localhost:3000/oauth2/redirect")
+        val targetUrl = UriComponentsBuilder.fromUriString("$frontendUrl/oauth2/redirect")
             .queryParam("accessToken", accessToken)
             .queryParam("refreshToken", refreshToken)
             .build()
