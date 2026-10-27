@@ -10,7 +10,9 @@ import com.example.wiki_project.document.domain.model.DocumentModel
 import com.example.wiki_project.document.domain.model.DocumentStatus
 import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
 import com.example.wiki_project.document.infrastructure.DocumentRepository
+import com.example.wiki_project.document.infrastructure.extractor.DocumentTextExtractor
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.assertThrows
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -47,7 +49,8 @@ class DocumentServiceTest {
             documentRepository = documentRepository,
             documentPermissionRepository = documentPermissionRepository,
             reactiveRedisTemplate = reactiveRedisTemplate,
-            documentCommandRepository = documentCommandRepository
+            documentCommandRepository = documentCommandRepository,
+            documentTextExtractor = DocumentTextExtractor() // 순수 로직이므로 실제 추출기 사용
         )
     }
 
@@ -60,9 +63,9 @@ class DocumentServiceTest {
             // given
             val command = DocumentUploadCommand(
                 title = "사내 가이드라인",
-                originalFilename = "guide.pdf",
+                originalFilename = "guide.md",
                 fileSize = 1024L,
-                fileBytes = "dummy data".toByteArray(),
+                fileBytes = "# 사내 가이드라인\n배포는 매주 목요일에 진행합니다.".toByteArray(),
                 uploaderId = 1L,
                 targetGroupIds = listOf(10L, 20L)
             )
@@ -111,6 +114,27 @@ class DocumentServiceTest {
             assertThat(thrownException!!.errorCode).isEqualTo(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE)
 
             // 인프라성 자원 호출이 차단되었는지 완벽 검증
+            verifyNoInteractions(documentCommandRepository, reactiveRedisTemplate)
+        }
+
+        @Test
+        @DisplayName("확장자만 PDF이고 실제 내용이 PDF가 아니면 DB 저장 전에 텍스트 추출 실패 예외가 터져야 한다")
+        fun uploadDocumentFailCorruptedPdf() = runTest {
+            // given
+            val command = DocumentUploadCommand(
+                title = "손상된 문서",
+                originalFilename = "broken.pdf",
+                fileSize = 10L,
+                fileBytes = "not a pdf".toByteArray(),
+                uploaderId = 1L,
+                targetGroupIds = listOf(10L)
+            )
+
+            // when & then
+            val exception = assertThrows<BusinessException> { documentService.uploadDocument(command) }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_TEXT_EXTRACTION_FAILED)
+
+            // UPLOADED 상태로 방치되는 문서가 생기지 않도록 저장 / 발행 모두 차단
             verifyNoInteractions(documentCommandRepository, reactiveRedisTemplate)
         }
     }
@@ -304,6 +328,18 @@ class DocumentServiceTest {
             // then
             assertThat(resultIds).containsExactly(1L, 2L)
             verify(documentCommandRepository, times(2)).saveDocumentWithPermissions(any(), any(), any())
+        }
+
+        @Test
+        @DisplayName("여러 파일 중 하나라도 검증에 실패하면 앞선 정상 파일도 저장하지 않아야 한다 (부분 저장 방지)")
+        fun uploadDocumentsFailWhenAnyInvalid() = runTest {
+            // given
+            val valid = DocumentUploadCommand(title="doc1", originalFilename="file1.txt", fileSize=10L, fileBytes="a".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
+            val invalid = DocumentUploadCommand(title="doc2", originalFilename="file2.exe", fileSize=10L, fileBytes="b".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
+
+            // when & then
+            assertThrows<BusinessException> { documentService.uploadDocuments(listOf(valid, invalid)) }
+            verifyNoInteractions(documentCommandRepository, reactiveRedisTemplate)
         }
     }
 
