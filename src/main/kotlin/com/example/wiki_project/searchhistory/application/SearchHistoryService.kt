@@ -77,7 +77,7 @@ class SearchHistoryService(
     fun getAllSearchHistoriesForAdmin(isAdmin: Boolean, pageable: Pageable): Page<SearchHistoryModel> {
         // 보안 가드: 어드민이 아니면 원천 차단
         if (!isAdmin) {
-            throw BusinessException(ErrorCode.UNAUTHORIZED) // "권한이 없습니다."
+            throw BusinessException(ErrorCode.ADMIN_ONLY)
         }
 
         val entities = searchHistoryRepository.findAllByOrderByIdDesc(pageable)
@@ -91,7 +91,7 @@ class SearchHistoryService(
     @Transactional(readOnly = true)
     fun getWorstSearchHistoriesForAdmin(isAdmin: Boolean, pageable: Pageable): Page<SearchHistoryModel> {
         if (!isAdmin) {
-            throw BusinessException(ErrorCode.UNAUTHORIZED)
+            throw BusinessException(ErrorCode.ADMIN_ONLY)
         }
 
         val entities = searchHistoryRepository.findByFeedbackFalseOrderByIdDesc(pageable)

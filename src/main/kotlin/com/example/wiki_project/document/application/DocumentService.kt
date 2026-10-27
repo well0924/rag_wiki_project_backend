@@ -10,15 +10,14 @@ import com.example.wiki_project.document.domain.model.DocumentModel
 import com.example.wiki_project.document.domain.model.DocumentStatus
 import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
 import com.example.wiki_project.document.infrastructure.DocumentRepository
+import com.example.wiki_project.document.infrastructure.extractor.DocumentTextExtractor
 import org.springframework.data.redis.connection.stream.StringRecord
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 
 @Service
@@ -26,7 +25,8 @@ class DocumentService(
     private val documentRepository: DocumentRepository,
     private val documentPermissionRepository: DocumentPermissionRepository,
     private val documentCommandRepository: DocumentCommandRepository,
-    private val reactiveRedisTemplate: ReactiveRedisTemplate<String, String>
+    private val reactiveRedisTemplate: ReactiveRedisTemplate<String, String>,
+    private val documentTextExtractor: DocumentTextExtractor
 ) {
 
     companion object {
@@ -35,23 +35,51 @@ class DocumentService(
     }
 
     /**
+     * 확장자 검증 및 텍스트 추출까지 끝난 업로드 준비 데이터
+     */
+    private class PreparedUpload(
+        val command: DocumentUploadCommand,
+        val docType: String,
+        val content: String
+    )
+
+    /**
     * 문서 업로드 (다중)
+    * - 모든 파일의 형식 검증 / 텍스트 추출을 먼저 끝낸 뒤 저장하여,
+    *   일부 파일 실패 시 앞선 파일만 DB에 남는 부분 저장을 방지
     **/
-    suspend fun uploadDocuments(commends:List<DocumentUploadCommand>):List<Long> = coroutineScope {
-        commends.map { uploadDocument(it) }
+    suspend fun uploadDocuments(commends:List<DocumentUploadCommand>):List<Long> = withContext(Dispatchers.IO) {
+        val prepared = commends.map { prepareUpload(it) }
+        prepared.map { saveAndPublish(it) }
     }
 
     /**
      * 문서 업로드
      **/
     suspend fun uploadDocument(command: DocumentUploadCommand): Long = withContext(Dispatchers.IO) {
+        saveAndPublish(prepareUpload(command))
+    }
 
+    /**
+     * 확장자 화이트리스트 검증 + 임베딩용 텍스트 추출 (DB 저장 전 단계)
+     */
+    private fun prepareUpload(command: DocumentUploadCommand): PreparedUpload {
         // 파일 확장자(docType) 맑게 파싱 (없으면 "UNKNOWN")
         val docType = command.originalFilename?.substringAfterLast('.', "UNKNOWN")?.uppercase() ?: "UNKNOWN"
 
         if (docType !in ALLOWED_DOC_TYPES) {
             throw BusinessException(ErrorCode.UNSUPPORTED_DOCUMENT_TYPE)
         }
+
+        // 텍스트가 없는 문서는 저장 전에 거절 (UPLOADED 상태로 방치되는 문서 방지)
+        val content = documentTextExtractor.extract(docType, command.fileBytes)
+        return PreparedUpload(command, docType, content)
+    }
+
+    private suspend fun saveAndPublish(prepared: PreparedUpload): Long {
+        val command = prepared.command
+        val docType = prepared.docType
+
         // 가짜 S3 보류 가드: 임시 URL 먼저 구워내기 (나중에 S3 주입 시 교체할 지점)
         // 주의: 실제 ID 기반으로 URL을 만들려면 영속화가 먼저 필요할 수 있으므로, 임시 범용 경로 규칙으로 조합
         // 파일명 오염 방지를 위해 고유한 임시 키 조합 (UUID 활용 추천)
@@ -61,16 +89,10 @@ class DocumentService(
         // RDB DB 작업은 확실하게 Dispatchers.IO로 격리하여 블로킹 수행
         val documentId = documentCommandRepository.saveDocumentWithPermissions(command, docType, dummyContentUrl)
 
-        val extractedContent = if (docType == "TXT" || docType == "MD") {
-            String(command.fileBytes, StandardCharsets.UTF_8)
-        } else {
-            "PDF/DOCX 바이너리 메타데이터 컨텍스트 가드선" // PDF 등은 나중에 파이썬이 s3Url로 긁어가게 유도
-        }
-
         // Redis Streams 'XADD' 비동기 큐잉 처리
         val event = DocumentUploadedEvent(
             documentId = documentId.toString(),
-            content = extractedContent,
+            content = prepared.content,
             s3Url = dummyContentUrl,
             title = command.title,
             uploaderId = command.uploaderId.toString()
@@ -83,7 +105,7 @@ class DocumentService(
             .add(record)
             .awaitSingle()
 
-        documentId
+        return documentId
     }
 
     @Transactional
