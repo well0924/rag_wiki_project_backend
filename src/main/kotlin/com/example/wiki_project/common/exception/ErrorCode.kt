@@ -26,6 +26,7 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     FORBIDDEN_DOCUMENT_ACCESS(HttpStatus.FORBIDDEN,"해당 그룹에 문서를 업로드하거나 접근할 권한이 없습니다."),
     UNSUPPORTED_DOCUMENT_TYPE(HttpStatus.BAD_REQUEST,"지원되지 않는 문서 형식입니다. (TXT, MD, PDF, DOCX만 가능)"),
     DOCUMENT_TEXT_EXTRACTION_FAILED(HttpStatus.BAD_REQUEST,"문서에서 텍스트를 추출할 수 없습니다. (손상된 파일 또는 이미지 스캔 PDF)"),
+    DOCUMENT_INDEXING_REQUEST_FAILED(HttpStatus.SERVICE_UNAVAILABLE,"문서 인덱싱 요청에 실패했습니다. 잠시 후 다시 업로드해 주세요."),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND,"적절한 히스토리 없습니다."),
     FORBIDDEN_HISTORY_ACCESS(HttpStatus.FORBIDDEN,"본인의 검색 기록에만 피드백을 남길 수 있습니다."),
     ADMIN_ONLY(HttpStatus.FORBIDDEN,"관리자만 접근할 수 있습니다."),

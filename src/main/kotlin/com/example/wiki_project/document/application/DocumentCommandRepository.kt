@@ -12,6 +12,7 @@ import com.example.wiki_project.document.infrastructure.DocumentPermissionReposi
 import com.example.wiki_project.document.infrastructure.DocumentRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 @Component
 class DocumentCommandRepository(
@@ -49,5 +50,15 @@ class DocumentCommandRepository(
         }
 
         return documentId
+    }
+
+    /**
+     * 인덱싱 큐 발행(XADD) 실패 시 UPLOADED 상태로 영원히 방치되지 않도록 즉시 실패 처리
+     */
+    @Transactional
+    fun markIndexingFailed(documentId: Long) {
+        val entity = documentRepository.findById(documentId).orElse(null) ?: return
+        entity.status = DocumentStatus.FAILED
+        entity.updatedAt = LocalDateTime.now()
     }
 }

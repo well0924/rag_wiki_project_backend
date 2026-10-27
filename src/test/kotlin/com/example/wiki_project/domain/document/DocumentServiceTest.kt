@@ -90,6 +90,30 @@ class DocumentServiceTest {
         }
 
         @Test
+        @DisplayName("DB 저장 후 Redis Streams 발행이 실패하면 문서를 FAILED로 전환하고 503 예외를 던진다 (UPLOADED 방치 방지)")
+        fun uploadDocumentMarksFailedWhenPublishFails() = runTest {
+            // given
+            val command = DocumentUploadCommand(
+                title = "사내 가이드라인",
+                originalFilename = "guide.md",
+                fileSize = 1024L,
+                fileBytes = "# 사내 가이드라인".toByteArray(),
+                uploaderId = 1L,
+                targetGroupIds = listOf(10L)
+            )
+            whenever(documentCommandRepository.saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), any()))
+                .thenReturn(99L)
+            whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
+            whenever(reactiveStreamOperations.add(any(StringRecord::class.java)))
+                .thenReturn(Mono.error(IllegalStateException("Redis connection refused")))
+
+            // when & then
+            val exception = assertThrows<BusinessException> { documentService.uploadDocument(command) }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_INDEXING_REQUEST_FAILED)
+            verify(documentCommandRepository).markIndexingFailed(99L)
+        }
+
+        @Test
         @DisplayName("지원하지 않는 문서 확장자(EXE 등)가 인입되면 인프라를 타기 전에 UNSUPPORTED_DOCUMENT_TYPE 예외가 터져야 한다")
         fun uploadDocumentFailInvalidExtension() = runTest {
             // given
