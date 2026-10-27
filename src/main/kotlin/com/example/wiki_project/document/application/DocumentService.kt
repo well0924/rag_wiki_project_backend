@@ -15,6 +15,7 @@ import org.springframework.data.redis.connection.stream.StringRecord
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.ReactiveRedisTemplate
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -28,6 +29,8 @@ class DocumentService(
     private val reactiveRedisTemplate: ReactiveRedisTemplate<String, String>,
     private val documentTextExtractor: DocumentTextExtractor
 ) {
+
+    private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
         private const val STREAM_KEY = "document:upload:stream"
@@ -101,9 +104,16 @@ class DocumentService(
         val record = StringRecord.of(event.toMap()).withStreamKey(STREAM_KEY)
 
         // awaitSingle()을 사용하여 스레드를 차단하지 않고(Non-blocking) 비동기 대기
-        reactiveRedisTemplate.opsForStream<String, String>()
-            .add(record)
-            .awaitSingle()
+        // - DB 저장은 끝났는데 발행만 실패하면 문서가 UPLOADED로 방치되므로 FAILED로 전환 후 예외 응답
+        try {
+            reactiveRedisTemplate.opsForStream<String, String>()
+                .add(record)
+                .awaitSingle()
+        } catch (e: Exception) {
+            log.error("문서 인덱싱 이벤트 발행 실패: documentId={}", documentId, e)
+            documentCommandRepository.markIndexingFailed(documentId)
+            throw BusinessException(ErrorCode.DOCUMENT_INDEXING_REQUEST_FAILED)
+        }
 
         return documentId
     }

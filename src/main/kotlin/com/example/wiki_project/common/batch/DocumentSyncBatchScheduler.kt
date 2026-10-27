@@ -6,7 +6,6 @@ import org.springframework.batch.core.JobParametersBuilder
 import org.springframework.batch.core.launch.JobLauncher
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 
@@ -16,7 +15,6 @@ import org.springframework.stereotype.Component
  * - batch.document-hard-delete.enabled=false 로 비활성화 가능
  */
 @Component
-@EnableScheduling
 @ConditionalOnProperty(name = ["batch.document-hard-delete.enabled"], havingValue = "true", matchIfMissing = true)
 class DocumentSyncBatchScheduler(
     private val jobLauncher: JobLauncher,
