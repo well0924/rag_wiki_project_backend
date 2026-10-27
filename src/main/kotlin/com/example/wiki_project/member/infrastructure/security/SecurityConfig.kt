@@ -10,6 +10,7 @@ import com.example.wiki_project.member.infrastructure.security.handler.OAuth2Fai
 import com.example.wiki_project.member.infrastructure.security.handler.OAuth2SuccessHandler
 import com.example.wiki_project.member.infrastructure.security.oauth.CustomOAuth2UserService
 import com.example.wiki_project.member.infrastructure.security.oauth.GoogleOAuth2AuthenticationProvider
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.authentication.AuthenticationManager
@@ -33,7 +34,9 @@ class SecurityConfig(
     private val customAccessDeniedHandler: CustomAccessDeniedHandler,
     private val customOAuth2UserService: CustomOAuth2UserService, // 구글 스펙 파싱 서비스 주입
     private val oAuth2SuccessHandler: OAuth2SuccessHandler,       // 성공 마스터 핸들러 주입
-    private val oAuth2FailureHandler: OAuth2FailureHandler
+    private val oAuth2FailureHandler: OAuth2FailureHandler,
+    // 콤마 구분 (예: https://wiki.example.com,http://localhost:3000)
+    @Value("\${app.cors.allowed-origins:http://localhost:3000}") private val allowedOrigins: List<String>
 ) {
 
     @Bean
@@ -85,7 +88,7 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("http://localhost:3000","http://localhost:89")
+        configuration.allowedOrigins = allowedOrigins
         // 허용할 HTTP 메서드
         configuration.allowedMethods =
             listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")

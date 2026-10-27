@@ -7,7 +7,11 @@ import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchR
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import com.example.wiki_project.member.infrastructure.security.filter.InternalApiKeyFilter
+import io.netty.channel.ChannelOption
+import org.springframework.http.client.reactive.ReactorClientHttpConnector
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.netty.http.client.HttpClient
+import java.time.Duration
 import org.springframework.web.reactive.function.client.awaitBodilessEntity
 import org.springframework.web.reactive.function.client.awaitBody
 
@@ -16,10 +20,18 @@ class PythonClientConfig(
     private val webClientBuilder: WebClient.Builder,
     @Value("\${ai.fastapi.url:http://localhost:8000}") private val aiServerUrl: String,
     // FastAPI 측 INTERNAL_API_KEY와 동일한 서버 간 공유 키
-    @Value("\${internal.api-key:local-internal-api-key}") private val internalApiKey: String
+    @Value("\${internal.api-key:local-internal-api-key}") private val internalApiKey: String,
+    // AI 서버 장애 시 요청 스레드가 무한 대기하지 않도록 연결/응답 타임아웃 지정
+    @Value("\${ai.fastapi.connect-timeout:3s}") private val connectTimeout: Duration = Duration.ofSeconds(3),
+    @Value("\${ai.fastapi.response-timeout:60s}") private val responseTimeout: Duration = Duration.ofSeconds(60)
 ) {
     private val client by lazy {
+        val httpClient = HttpClient.create()
+            .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeout.toMillis().toInt())
+            .responseTimeout(responseTimeout)
+
         webClientBuilder
+            .clientConnector(ReactorClientHttpConnector(httpClient))
             .baseUrl(aiServerUrl)
             .defaultHeader(InternalApiKeyFilter.HEADER, internalApiKey)
             .build()
