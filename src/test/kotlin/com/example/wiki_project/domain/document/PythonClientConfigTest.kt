@@ -46,6 +46,23 @@ class PythonClientConfigTest {
         assertThat(request.headers().getFirst(InternalApiKeyFilter.HEADER)).isEqualTo(internalApiKey)
         assertThat(response.answer).isEqualTo("답변")
         assertThat(response.referencedChunkIds).containsExactly("1", "2")
+        assertThat(response.sources).isEmpty()
+    }
+
+    @Test
+    @DisplayName("AI 서버가 반환한 답변 근거 문서(sources)를 역직렬화한다")
+    fun searchParsesSources() = runTest {
+        val client = clientReturning(
+            """{"answer":"연차는 15일입니다. [1]","referencedChunkIds":[7],
+               "sources":[{"documentId":3,"title":"휴가 규정","similarity":0.612}]}"""
+        )
+
+        val response = client.searchFromRAG("연차 며칠?", listOf(1L), false)
+
+        assertThat(response.sources).hasSize(1)
+        assertThat(response.sources[0].documentId).isEqualTo(3L)
+        assertThat(response.sources[0].title).isEqualTo("휴가 규정")
+        assertThat(response.sources[0].similarity).isEqualTo(0.612)
     }
 
     @Test
