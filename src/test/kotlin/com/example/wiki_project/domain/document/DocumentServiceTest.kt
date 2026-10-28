@@ -25,6 +25,7 @@ import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.*
 import org.springframework.core.io.ByteArrayResource
+import org.springframework.data.redis.connection.RedisStreamCommands.XAddOptions
 import org.springframework.data.redis.connection.stream.RecordId
 import org.springframework.data.redis.connection.stream.StringRecord
 import org.springframework.data.redis.core.ReactiveRedisTemplate
@@ -82,7 +83,7 @@ class DocumentServiceTest {
             ))
                 .thenReturn(99L)
             whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
-            whenever(reactiveStreamOperations.add(any(StringRecord::class.java))).thenReturn(Mono.just(RecordId.of("17800000-0")))
+            whenever(reactiveStreamOperations.add(any(StringRecord::class.java), any<XAddOptions>())).thenReturn(Mono.just(RecordId.of("17800000-0")))
 
             // when
             val resultId = documentService.uploadDocument(command)
@@ -94,7 +95,8 @@ class DocumentServiceTest {
             verify(fileStorage).store(keyCaptor.capture(), eq(command.fileBytes))
             assertThat(keyCaptor.firstValue).startsWith("documents/").endsWith(".md")
             verify(documentCommandRepository).saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), eq(keyCaptor.firstValue))
-            verify(reactiveStreamOperations).add(any(StringRecord::class.java)) // Redis Streams XADD 호출 팩트 체크
+            // Redis Streams XADD 호출 팩트 체크 (MAXLEN ~1000 트리밍 옵션 포함)
+            verify(reactiveStreamOperations).add(any(StringRecord::class.java), eq(DocumentService.STREAM_ADD_OPTIONS))
         }
 
         @Test
@@ -135,7 +137,7 @@ class DocumentServiceTest {
             whenever(documentCommandRepository.saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), any()))
                 .thenReturn(99L)
             whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
-            whenever(reactiveStreamOperations.add(any(StringRecord::class.java)))
+            whenever(reactiveStreamOperations.add(any(StringRecord::class.java), any<XAddOptions>()))
                 .thenReturn(Mono.error(IllegalStateException("Redis connection refused")))
 
             // when & then
@@ -375,7 +377,7 @@ class DocumentServiceTest {
             whenever(documentCommandRepository.saveDocumentWithPermissions(any(), any(), any()))
                 .thenReturn(1L, 2L)
             whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
-            whenever(reactiveStreamOperations.add(any())).thenReturn(Mono.just(RecordId.of("1-0")))
+            whenever(reactiveStreamOperations.add(any<StringRecord>(), any<XAddOptions>())).thenReturn(Mono.just(RecordId.of("1-0")))
 
             // when
             val resultIds = documentService.uploadDocuments(commands)

@@ -12,6 +12,7 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     DUPLICATE_EMAIL(HttpStatus.BAD_REQUEST, "이미 존재하는 이메일입니다."),
     ALREADY_WITHDRAWN_MEMBER(HttpStatus.NOT_FOUND, "이미 탈퇴를 한 회원입니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증 자격 증명이 유효하지 않습니다."),
+    INVALID_OAUTH2_LOGIN_CODE(HttpStatus.UNAUTHORIZED, "만료되었거나 이미 사용된 로그인 코드입니다. 다시 로그인해 주세요."),
 
     // User Group
     GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 유저 그룹입니다."),

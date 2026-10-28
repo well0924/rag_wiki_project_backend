@@ -1,7 +1,10 @@
 package com.example.wiki_project.member.application
 
+import com.example.wiki_project.common.exception.BusinessException
+import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.member.application.dto.LoginCommand
 import com.example.wiki_project.member.application.dto.TokenResponse
+import com.example.wiki_project.member.infrastructure.security.OAuth2LoginCodeRepository
 import com.example.wiki_project.member.infrastructure.security.RedisTokenRepository
 import com.example.wiki_project.member.infrastructure.security.UserCacheRepository
 import com.example.wiki_project.member.infrastructure.security.auth.CustomAuthenticationManager
@@ -18,7 +21,8 @@ class AuthService(
     private val jwtTokenProvider: JwtTokenProvider,
     private val tokenRepository: RedisTokenRepository,
     private val userCacheRepository: UserCacheRepository,
-    private val userDetailsService: CustomUserDetailsService
+    private val userDetailsService: CustomUserDetailsService,
+    private val oAuth2LoginCodeRepository: OAuth2LoginCodeRepository
 ) {
 
     /**
@@ -68,6 +72,14 @@ class AuthService(
         tokenRepository.saveRefreshToken(email, newRefreshToken)
 
         return TokenResponse(newAccessToken, newRefreshToken)
+    }
+
+    /**
+     * 소셜 로그인 일회용 코드 → 토큰 세트 교환 (코드는 1회만 유효)
+     */
+    fun exchangeOAuth2LoginCode(code: String): TokenResponse {
+        return oAuth2LoginCodeRepository.consume(code)
+            ?: throw BusinessException(ErrorCode.INVALID_OAUTH2_LOGIN_CODE)
     }
 
     /**
