@@ -32,19 +32,9 @@
 
 ## 🏗️ 전체 아키텍처
 
-```mermaid
-flowchart LR
-    FE["Next.js 프론트<br/>(Vercel)"] -->|HTTPS| CD["Caddy<br/>(TLS, 내부 API 차단)"]
-    CD --> SB["Spring Boot<br/>인증 · 권한 · 문서 · 검색 기록"]
-    SB --> PG[("PostgreSQL<br/>+ pgvector")]
-    SB -->|"XADD 업로드 이벤트"| RD[("Redis<br/>캐시 · 토큰 · Streams")]
-    RD -->|XREADGROUP| AI["FastAPI AI 서버<br/>청킹 · 임베딩 · RAG"]
-    AI -->|"상태 콜백 (내부 API 키)"| SB
-    SB -->|"검색 요청 (내부 API 키)"| AI
-    AI --> PG
-    AI -.-> OAI["OpenAI<br/>임베딩 · gpt-4o-mini"]
-    SB --> FS[("원본 파일 저장소<br/>(로컬 볼륨, S3 예정)")]
-```
+![rag_wiki 배포 구조](docs/images/architecture.png)
+
+> 점선 상자는 아직 구현 전(예정)입니다. 데이터 구조(ERD), 권한 규칙, 회원·그룹·문서 수명주기, Redis 키 구조는 [비즈니스 로직 상세](docs/business-logic.md)에 정리했습니다.
 
 | 구분 | Spring Boot (이 저장소) | FastAPI (AI 서버) |
 |---|---|---|
