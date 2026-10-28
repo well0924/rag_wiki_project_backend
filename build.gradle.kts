@@ -4,6 +4,7 @@ plugins {
     id("org.springframework.boot") version "3.5.14"
     id("io.spring.dependency-management") version "1.1.7"
     kotlin("plugin.jpa") version "1.9.25"
+    id("com.google.cloud.tools.jib") version "3.4.4"
 }
 
 group = "com.example"
@@ -76,4 +77,29 @@ allOpen {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// 로컬 전용 비밀값 파일은 컨테이너 이미지에 포함하지 않음 (CI에는 파일 자체가 없지만 로컬 jib 실행 대비)
+tasks.processResources {
+    if (gradle.startParameter.taskNames.any { it.startsWith("jib") }) {
+        exclude("application-local.properties")
+    }
+}
+
+// 컨테이너 이미지 빌드 (./gradlew jib → GHCR 푸시)
+jib {
+    from {
+        image = "eclipse-temurin:17-jre"
+    }
+    to {
+        image = "ghcr.io/well0924/wiki-backend"
+        tags = setOf("latest", System.getenv("GITHUB_SHA") ?: "local")
+    }
+    container {
+        ports = listOf("89")
+        // 비밀값은 이미지가 아닌 실행 환경(.env)에서 주입
+        environment = mapOf("SPRING_PROFILES_ACTIVE" to "prod")
+        jvmFlags = listOf("-Dfile.encoding=UTF-8", "-Duser.timezone=Asia/Seoul")
+        user = "1000:1000"
+    }
 }
