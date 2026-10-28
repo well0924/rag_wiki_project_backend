@@ -33,8 +33,8 @@ class SecurityConfig(
     private val internalApiKeyFilter: InternalApiKeyFilter,
     private val customAuthenticationEntryPoint: CustomAuthenticationEntryPoint,
     private val customAccessDeniedHandler: CustomAccessDeniedHandler,
-    private val customOAuth2UserService: CustomOAuth2UserService, // 구글 스펙 파싱 서비스 주입
-    private val oAuth2SuccessHandler: OAuth2SuccessHandler,       // 성공 마스터 핸들러 주입
+    private val customOAuth2UserService: CustomOAuth2UserService, // 구글 사용자 정보 검증 / 정규화
+    private val oAuth2SuccessHandler: OAuth2SuccessHandler,       // 로그인 성공 시 일회용 코드 발급
     private val oAuth2FailureHandler: OAuth2FailureHandler,
     // 콤마 구분 (예: https://wiki.example.com,http://localhost:3000)
     @Value("\${app.cors.allowed-origins:http://localhost:3000}") private val allowedOrigins: List<String>
@@ -51,9 +51,9 @@ class SecurityConfig(
     @Bean
     fun filterChain(http: HttpSecurity): SecurityFilterChain {
         http
-            // CSRF 및 Session 비활성화 (Rest API + JWT 환경 정석)
+            // CSRF / 세션 비활성화 (JWT 기반 Stateless API)
             .csrf { it.disable() }
-            .cors { it.configurationSource(corsConfigurationSource()) } // cors 추가
+            .cors { it.configurationSource(corsConfigurationSource()) } // 허용 출처: app.cors.allowed-origins
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             // HTTP 요청별 권한 세분화 구성
             .authorizeHttpRequests { auth ->
@@ -78,7 +78,7 @@ class SecurityConfig(
                     .successHandler(oAuth2SuccessHandler)
                     .failureHandler(oAuth2FailureHandler)
             }
-            // 필터 레이어 예외 처리(Exception Handling) 꼼꼼하게 매핑
+            // 인증 실패(401) / 인가 실패(403) 응답 처리
             .exceptionHandling {
                 exception ->
                 exception

@@ -19,13 +19,13 @@ class OAuth2FailureHandler(
         response: HttpServletResponse,
         exception: org.springframework.security.core.AuthenticationException?
     ) {
-        // 프로바이더가 뱉은 에러 메시지 맑게 추출
+        // 인증 실패 사유 (허용되지 않은 도메인, 탈퇴 계정 등)
         val errorMessage = exception?.message ?: "소셜 로그인 인증에 실패했습니다."
 
-        // 프론트엔드 브라우저 쿼리 파라미터가 한글을 깨짐 없이 먹을 수 있게 인코딩
+        // 한글 메시지를 쿼리 파라미터로 전달하기 위해 URL 인코딩
         val encodedErrorMessage = URLEncoder.encode(errorMessage, StandardCharsets.UTF_8.toString())
 
-        // 프론트엔드의 로그인 화면으로 에러 마킹 및 알림용 메시지 얹어서 강제 리다이렉트
+        // 프론트 로그인 화면으로 실패 여부와 사유를 담아 리다이렉트
         val targetUrl = UriComponentsBuilder.fromUriString("$frontendUrl/login")
             .queryParam("error", true)
             .queryParam("message", encodedErrorMessage)

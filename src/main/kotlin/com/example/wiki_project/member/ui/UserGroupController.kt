@@ -31,7 +31,7 @@ class UserGroupController(
         @AuthenticationPrincipal userDetails: CustomUserDetails,
         @RequestBody request: CreateGroupRequest
     ): ResponseEntity<UserGroupModel> {
-        // 인증 객체에서 안전하게 memberId 추출하여 서비스 레이어로 전달
+        // 생성자는 요청 본문이 아닌 인증 정보의 회원 ID 사용
         val model = userDetails.member.id?.let { groupService.createGroup(it, request.groupName, request.description) }
         return ResponseEntity.status(HttpStatus.CREATED).body(model)
     }

@@ -22,7 +22,7 @@ class DocumentEntity(
     val title: String,
 
     @Column(name = "content_url", nullable = false, columnDefinition = "TEXT")
-    val contentUrl: String, // S3 Object Key Path
+    val contentUrl: String, // 파일 저장소 key (예: documents/{uuid}.pdf, S3 도입 시 object key 로 사용)
 
     @Column(name = "doc_type")
     val docType: String,

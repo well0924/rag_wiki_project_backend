@@ -37,7 +37,7 @@ class DocumentSyncBatchConfig(
 
     companion object {
         const val JOB_NAME = "documentHardDeleteJob"
-        private const val CHUNK_SIZE = 100 // 대용량 메모리 부하를 고려한 청크 트랜잭션 단위 셋업
+        private const val CHUNK_SIZE = 100 // 한 트랜잭션에서 처리할 문서 수 (메모리 사용량 제한)
     }
 
     @Bean
@@ -58,7 +58,7 @@ class DocumentSyncBatchConfig(
     }
 
     /**
-     *  READER : RDB에서 isDeleted = true 상태인 문서 메타데이터를 페이징 버퍼링 조회
+     *  READER : isDeleted = true 인 문서를 페이지 단위로 조회
      *  - 읽은 행을 writer가 바로 삭제하므로, 일반 페이징(offset 증가)을 쓰면
      *    2페이지부터 앞당겨진 행을 건너뛰게 됨 → 항상 첫 페이지(offset 0)만 다시 조회
      */
@@ -78,8 +78,7 @@ class DocumentSyncBatchConfig(
     }
 
     /**
-     *  PROCESSOR : WebClient 를 활용해서 Python Vector DB 진영에
-     * "이 문서 ID에 해당하는 임베딩 벡터 데이터 다 파기해라" 하고 싱크 요청
+     *  PROCESSOR : AI 서버에 해당 문서의 벡터 청크 삭제를 요청한 뒤 원본 파일 삭제
      * - 실패 시 예외가 전파되어 해당 청크는 롤백되고, 다음 배치 실행 때 다시 시도됨
      */
     @Bean
@@ -99,7 +98,7 @@ class DocumentSyncBatchConfig(
     }
 
     /**
-     *  WRITER : 외부 AI 진영 파기 처리가 완료된 문서를 RDB에서도 완전히 삭제
+     *  WRITER : 벡터 청크와 원본 파일 삭제가 끝난 문서를 RDB에서 영구 삭제
      * - 문서 권한 매핑(document_permissions)도 함께 지워 고아 데이터를 남기지 않음
      */
     @Bean

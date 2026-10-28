@@ -9,7 +9,7 @@ data class DocumentUploadCommand(
     val targetGroupIds: List<Long>
 ) {
     init {
-        // 서비스 진입 전 2차 최종 방어선 가드
+        // 컨트롤러 검증과 별개로 Command 생성 시점에 한 번 더 검증
         require(title.isNotBlank()) { "문서 제목은 공백일 수 없습니다." }
         require(fileBytes.isNotEmpty()) { "업로드할 로우 바이트 파일 데이터가 비어있습니다." }
     }

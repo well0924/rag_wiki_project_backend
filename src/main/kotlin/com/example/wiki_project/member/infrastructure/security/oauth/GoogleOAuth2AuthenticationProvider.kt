@@ -28,12 +28,12 @@ class GoogleOAuth2AuthenticationProvider(
         val email = token.principal
         val name = token.getNameAttribute()
 
-        // 1. DB 뒤져서 가입 여부 체크 후, 소셜 신규 유저면 가입(Just-In-Time) 처리
+        // 1. 이메일로 회원 조회, 없으면 자동 가입(JIT)
         val memberEntity = memberRepository.findByEmail(email)
             ?: memberRepository.save(
                 MemberModel(
                     email = email,
-                    password = UUID.randomUUID().toString(), // 소셜 유저는 더미 패스워드 주입
+                    password = UUID.randomUUID().toString(), // 소셜 회원은 비밀번호 로그인을 쓰지 않으므로 임의 값 저장
                     userName = name,
                     role = Role.ROLE_MEMBER
                 ).toEntity()
@@ -41,15 +41,14 @@ class GoogleOAuth2AuthenticationProvider(
 
         val memberModel = memberEntity.toModel()
 
-        // 2. [요구사항 방어] 구글 계정이더라도 이미 Soft Delete(탈퇴)된 회원이라면 로그인 전면 차단
+        // 2. 탈퇴(Soft Delete)한 회원은 구글 로그인도 차단
         if (memberModel.isDeleted) {
             throw BadCredentialsException("탈퇴 처리된 소셜 계정입니다.")
         }
 
-        // 3. 우리의 시큐리티 규격 표준인 CustomUserDetails로 포장
-        // TODO: 필요시 아까 만든 경량 쿼리 서비스(MemberQueryService) 주입받아 actualGroupIds 박아주기
+        // 3. 소속 그룹 / 관리자 여부를 조회하여 CustomUserDetails 구성
         val authInfo = memberQueryService.findGroupIds(memberModel)
-        // 캐시 적재 추가
+        // 인증 캐시 적재 (이후 요청은 DB 조회 없이 인증)
         userCacheRepository.saveUserCache(email, UserCacheData(
             member = memberModel,
             groupIds = authInfo.groupIds,
@@ -60,7 +59,7 @@ class GoogleOAuth2AuthenticationProvider(
             groupIds = authInfo.groupIds,
             isAdmin = authInfo.isAdmin
         )
-        // 4. 최종 인증 성립 토큰 반환 (인증 완료 상태 마킹)
+        // 4. 인증 완료 토큰 반환
         return UsernamePasswordAuthenticationToken(
             customUserDetails,
             null,

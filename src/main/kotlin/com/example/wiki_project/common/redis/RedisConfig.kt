@@ -31,16 +31,16 @@ class RedisConfig {
     }
 
     /**
-     * 2. @Cacheable 애노테이션 전용 RedisCacheManager 설정 (가장 중요)
+     * 2. @Cacheable 용 RedisCacheManager 설정
      */
     @Bean
     fun cacheManager(connectionFactory: RedisConnectionFactory): RedisCacheManager {
-        // 코틀린 및 시큐리티 코어 직렬화를 완벽 지원하는 커스텀 ObjectMapper 빌드
+        // Kotlin data class 와 Spring Security 객체를 직렬화할 수 있도록 ObjectMapper 구성
         val objectMapper = ObjectMapper().apply {
             registerKotlinModule() // 코틀린 역직렬화 에러(기본생성자 문제) 해결
             registerModules(SecurityJackson2Modules.getModules(this.javaClass.classLoader)) // 시큐리티 객체 직렬화 지원
 
-            // 객체의 구체적인 클래스 타입 정보(메타데이터)를 JSON에 함께 박아두어 다운캐스팅 오류 방지
+            // 역직렬화 시 원래 타입으로 복원되도록 클래스 타입 정보를 JSON에 함께 저장
             activateDefaultTyping(
                 LaissezFaireSubTypeValidator.instance,
                 ObjectMapper.DefaultTyping.NON_FINAL,
@@ -66,7 +66,7 @@ class RedisConfig {
             // 만약 특정 캐시 이름(예: "user-cache")만 TTL을 다르게 주고 싶다면 아래처럼 오버라이딩 가능
             .withCacheConfiguration(
                 "user-cache",
-                defaultCacheConfig.entryTtl(Duration.ofMinutes(15)) // 유저 캐시는 좀 더 신선하게 15분으로 설정 가능
+                defaultCacheConfig.entryTtl(Duration.ofMinutes(15)) // 예: 유저 캐시만 15분으로 설정
             )
             .build()
     }

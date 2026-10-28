@@ -8,12 +8,12 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface SearchHistoryRepository: JpaRepository<SearchHistoryEntity,Long> {
-    // 유저 마이페이지 챗봇 대화방 리스트 역순 출력용 쿼리 메서드
+    // 회원의 검색 기록 최근 순 조회
     fun findByMemberIdOrderByIdDesc(memberId: Long): List<SearchHistoryEntity>
-    // 전사 임직원의 모든 대화 기록을 페이지네이션으로 긁어오기
+    // 전체 검색 기록 페이지 조회 (관리자용)
     fun findAllByOrderByIdDesc(pageable: Pageable): Page<SearchHistoryEntity>
 
-    // 유저들이 "비추천(false)"을 박은 워스트(Worst) 답변만 모아서 모니터링
-    // AI 모델이 어떤 질문에서 헛소리(Hallucination)를 하는지 추적하는 쿼리
+    // 비추천(false) 피드백을 받은 답변 조회
+    // 어떤 질문에서 답변 품질이 낮은지(환각 등) 추적하는 용도
     fun findByFeedbackFalseOrderByIdDesc(pageable: Pageable): Page<SearchHistoryEntity>
 }
