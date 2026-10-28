@@ -34,31 +34,31 @@ class DocumentController(
 
     /**
      * 위키 문서 파일 업로드 및 비동기 큐 적재
-     * - 멀티파트 폼 데이터 양식으로 파일과 텍스트 데이터를 한방에 바인딩합니다.
+     * - multipart/form-data 로 파일과 메타데이터를 함께 받습니다.
      * - @ModelAttribute를 통해 쿼리 파라미터/폼 데이터를 DocumentUploadRequest 객체로 매핑합니다.
      */
     @Operation(summary = "위키 문서 업로드", description = "파일 화이트리스트 검증을 통과한 문서를 RDB에 영속화하고 Redis Streams에 비동기 이벤트를 발행합니다.")
     @PostMapping("/upload", consumes = ["multipart/form-data"])
     suspend fun uploadDocument(
         @AuthenticationPrincipal customUserDetails: CustomUserDetails,
-        @Valid @ModelAttribute request: DocumentUploadRequest, // 제목, 업로더 아이디, 그룹 가리개 한방에 수신
+        @Valid @ModelAttribute request: DocumentUploadRequest, // 제목, 공개 대상 그룹 ID
         @RequestPart("file") files: List<MultipartFile>
     ): ResponseEntity<Map<String, Any>> {
 
         val uploaderId = customUserDetails.member.id
             ?: throw BusinessException(ErrorCode.MEMBER_NOT_FOUND)
 
-        // 💡 2. [보안 방어선] 권한 가드
+        // 권한 검증: 일반 회원은 자신이 소속된 그룹에만 문서를 공개할 수 있음
         // 만약 일반 유저가 요청한 targetGroupIds가 자기가 소속된 그룹들(userDetails.groupIds)에 포함되지 않는다면 차단
-        if (!customUserDetails.isAdmin) { // 어드민이 아니라면 권한 체크 작동
+        if (!customUserDetails.isAdmin) { // 관리자는 검사 생략
             val hasPermission = customUserDetails.groupIds.containsAll(request.targetGroupIds)
             if (!hasPermission) {
-                throw BusinessException(ErrorCode.FORBIDDEN_DOCUMENT_ACCESS) // 403 에러코드 권한 차단
+                throw BusinessException(ErrorCode.FORBIDDEN_DOCUMENT_ACCESS) // 403
             }
         }
         require(files.isNotEmpty()) { "업로드할 파일이 비어있습니다." }
 
-        // [매핑 레이어] DTO와 멀티파트 정보의 융합을 통한 무결한 Command 객체 생성
+        // 요청 DTO와 업로드 파일 정보를 서비스 계층용 Command로 변환
         val command = files.map { file ->
             DocumentUploadCommand(
                 title = request.title,

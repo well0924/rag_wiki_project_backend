@@ -54,7 +54,7 @@ class AdminService(
         val memberModel = memberEntity.toModel()
 
         if (memberModel.isDeleted) {
-            throw BusinessException(ErrorCode.ALREADY_WITHDRAWN_MEMBER) // 예시 에러코드
+            throw BusinessException(ErrorCode.ALREADY_WITHDRAWN_MEMBER)
         }
 
         if (memberModel.role == Role.ROLE_ADMIN) {
@@ -94,8 +94,8 @@ class AdminService(
         val withdrawnModel = memberModel.withdraw()
         memberRepository.save(withdrawnModel.toEntity())
 
-        // 중요: 추방된 회원의 인프라 세션(Refresh Token / User Cache) 실시간 즉시 삭제
-        // 이렇게 처리해두면 분탕 유저가 다음 요청을 보낼 때 시큐리티 필터(JWT/인증 진영)에서 가차없이 튕겨나감
+        // 추방된 회원의 Refresh Token과 인증 캐시를 즉시 삭제
+        // → 다음 요청부터 인증 필터가 DB의 최신 상태(탈퇴)를 읽어 차단하고, 토큰 재발급도 불가
         userCacheRepository.deleteUserCache(memberModel.email)
         tokenRepository.deleteRefreshToken(memberModel.email)
 

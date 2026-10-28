@@ -6,7 +6,7 @@ data class DocumentUploadedEvent(val documentId: String,
                                  val title: String,
                                  val uploaderId: String) {
     /**
-     * Redis 인메모리 스트림 적재를 위한 직렬화 맵 변환 매핑
+     * Redis Streams 메시지 필드(Map)로 변환
      */
     fun toMap(): Map<String, String> {
         return mapOf(

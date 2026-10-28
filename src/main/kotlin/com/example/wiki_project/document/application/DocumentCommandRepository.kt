@@ -21,7 +21,7 @@ class DocumentCommandRepository(
 ) {
 
     /**
-     * 다른 클래스에서 호출하므로 @Transactional 프록시가 완벽하게 작동.
+     * 별도 빈으로 분리해 외부에서 호출하므로 @Transactional 프록시가 적용됨 (같은 클래스 내부 호출 시 미적용 문제 회피).
      * 문서와 권한 테이블 생성이 하나의 트랜잭션으로 묶여 둘 중 하나라도 깨지면 전체 롤백.
      */
     @Transactional

@@ -20,7 +20,7 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     ADMIN_CANNOT_BE_ASSIGNED_TO_GROUP(HttpStatus.BAD_REQUEST,"관리자는 그룹을 할당을 할 수 없습니다."),
     DUPLICATE_GROUP_NAME(HttpStatus.BAD_REQUEST,"유저 그룹이 중복이 됩니다."),
 
-    // Document (새로 추가할 지점)
+    // Document
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 문서입니다."),
     DOCUMENT_SAVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "문서 엔티티 저장에 실패했습니다."),
     UNAUTHORIZED_DOCUMENT_ACCESS(HttpStatus.FORBIDDEN,"접근 권한이 없는 기밀 문서입니다."),

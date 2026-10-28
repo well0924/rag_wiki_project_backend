@@ -17,7 +17,7 @@ data class MemberModel(
      * 상태를 직접 변경하지 않고, 코틀린의 불변성을 살려 복사본(copy)을 반환함.
      */
     fun changeUserName(newName: String): MemberModel {
-        // 비즈니스 검증 규칙 규칙을 도메인 모델이 스스로 통제
+        // 검증 규칙은 도메인 모델이 직접 관리
         require(newName.isNotBlank()) { "유저 이름은 공백일 수 없습니다." }
         require(newName.length <= 100) { "유저 이름은 100자를 초과할 수 없습니다." }
 
@@ -62,7 +62,7 @@ data class MemberModel(
         return MemberModel(
             id = this.id,
             email = this.email,
-            password = this.password, // 패스워드 변경 유스케이스는 별도로 찢는 게 안전함
+            password = this.password, // 비밀번호는 changePassword 에서만 변경
             userName = newUserName,
             role = this.role,
             createdAt = this.createdAt,
@@ -85,7 +85,7 @@ data class MemberModel(
             role = this.role,
             createdAt = this.createdAt,
             updatedAt = LocalDateTime.now(),
-            isDeleted = true // 삭제 상태로 복사
+            isDeleted = true
         )
     }
 
@@ -93,7 +93,7 @@ data class MemberModel(
         return MemberModel(
             id = this.id,
             email = this.email,
-            password = newEncryptedPassword, // 패스워드 변경 유스케이스는 별도로 찢는 게 안전함
+            password = newEncryptedPassword, // 암호화된 값만 전달받음
             userName = this.userName,
             role = this.role,
             createdAt = this.createdAt,

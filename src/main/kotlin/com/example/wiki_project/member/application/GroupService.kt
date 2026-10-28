@@ -38,13 +38,13 @@ class GroupService(
 
         // 도메인 모델 생성 및 유효성 검증 트리거 (초기 생성 시에도 검증 적용)
         val groupModel = UserGroupModel(groupName = groupName, description = description)
-        // 만약 초기 생성 시에도 글자 수 등 require 검증을 먹이고 싶다면 아래처럼 활용 가능
+        // 수정 시와 동일한 이름 / 설명 검증 규칙 적용
         val validatedModel = groupModel.updateGroupInfo(groupName, description)
 
-        // RDB에 그룹 마스터 영속화
+        // 그룹 저장
         val savedGroupEntity = userGroupRepository.save(validatedModel.toEntity())
 
-        // 다대다 매핑 엔티티에 생성자-그룹 관계 맺어주고 저장
+        // 생성자를 그룹 멤버로 등록
         userGroupMemberRepository.save(
             UserGroupMember(
                 member = memberEntity,
@@ -65,10 +65,10 @@ class GroupService(
      */
     @Transactional(readOnly = true)
     fun getMyGroups(memberId: Long): List<UserGroupModel> {
-        // 이미 가지고 있던 레포지토리 메서드 활용
+        // 회원 ID로 소속 그룹 매핑 조회
         val mappingList = userGroupMemberRepository.findByMemberId(memberId)
 
-        // 매핑 테이블에서 객체 그래프를 타고 올라가 UserGroup 엔티티를 도메인 모델로 최종 치환
+        // 매핑 엔티티에서 그룹 엔티티를 꺼내 도메인 모델로 변환
         return mappingList.map { it.group.toModel() }
     }
 
@@ -86,10 +86,10 @@ class GroupService(
             throw BusinessException(ErrorCode.DUPLICATE_GROUP_NAME)
         }
 
-        // 엔티티를 순수 도메인 모델로 격리 변경
+        // 엔티티를 도메인 모델로 변환
         val currentModel = groupEntity.toModel()
 
-        // 도메인 내 require 유효성 검증 및 copy 로직 작동!
+        // 도메인 모델에서 유효성 검증 후 변경된 복사본 반환
         val updatedModel = currentModel.updateGroupInfo(newGroupName, newDescription)
 
         // 검증 완료된 도메인 데이터를 다시 엔티티로 변환하여 영속성 컨텍스트 반영
@@ -109,10 +109,10 @@ class GroupService(
         userGroupMemberRepository.findByGroup(groupEntity)
             .forEach { userCacheRepository.deleteUserCache(it.member.email) }
 
-        // PostgreSQL 복합 PK 최적화가 적용된 매핑 관계선 데이터 선행 삭제
+        // 그룹 멤버 매핑을 먼저 삭제 (FK 제약)
         userGroupMemberRepository.deleteByGroup(groupEntity)
 
-        // 실제 그룹 마스터 데이터 삭제
+        // 그룹 삭제
         userGroupRepository.delete(groupEntity)
     }
 }

@@ -25,26 +25,26 @@ class CustomOAuth2UserService(
         .toSet()
 
     override fun loadUser(userRequest: OAuth2UserRequest): OAuth2User {
-        // 1. 스프링 시큐리티 공식 기본 소셜 유저 로더 서비스 위임 생성
+        // 1. 사용자 정보 조회는 기본 구현(DefaultOAuth2UserService)에 위임
         val delegate = DefaultOAuth2UserService()
 
-        // 2. 구글 API 서버를 직접 찔러서 로우 프로필 데이터(Attributes Map) 긁어오기
+        // 2. 구글 userinfo API 에서 사용자 정보(attributes) 조회
         val oAuth2User = delegate.loadUser(userRequest)
 
-        // 3. 현재 어떤 소셜 서비스 공급자(Google 등)를 타고 들어왔는지 식별값 추출
+        // 3. 로그인 공급자 식별 (google 등)
         val registrationId = userRequest.clientRegistration.registrationId
 
-        // 4. 구글 인증 시 고유 식별 키가 되는 필드명 추출 (구글의 경우 기본값 'sub')
+        // 4. 사용자 고유 식별 필드명 (구글은 'sub')
         val userNameAttributeName = userRequest.clientRegistration
             .providerDetails.userInfoEndpoint.userNameAttributeName
 
-        // 5. 구글이 던져준 로우 데이터 맵 정보 확보
+        // 5. 공급자가 반환한 원본 사용자 정보
         val attributes = oAuth2User.attributes
 
         // [정규화 + 접근 제어 레이어] 공급자 스펙에 맞게 이메일과 이름을 가공하고 가입 가능 계정인지 검증
         val (email, name) = extractAccount(registrationId, attributes)
 
-        // 6. 아까 만든 OAuth2SuccessHandler가 깨짐 없이 낚아챌 수 있도록 공통 Key 명세 매핑하여 반환
+        // 6. OAuth2SuccessHandler 가 공급자와 무관하게 읽을 수 있도록 공통 키(extractedEmail / extractedName) 추가
         return DefaultOAuth2User(
             listOf(SimpleGrantedAuthority("ROLE_MEMBER")), // 기본 유저 권한 부여
             attributes + mapOf(

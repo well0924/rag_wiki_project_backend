@@ -24,7 +24,7 @@ class JwtTokenProvider(
         private const val REFRESH_TYPE = "refresh"
     }
 
-    // 락 프리(Lock-free) 가독성을 위해 lazy를 사용하여 시크릿 키 객체를 최초 1회 초기화
+    // 서명 키는 최초 사용 시 1회만 생성 (lazy)
     private val secretKey: SecretKey by lazy {
         Keys.hmacShaKeyFor(secretKeyString.toByteArray())
     }
@@ -48,7 +48,7 @@ class JwtTokenProvider(
     }
 
     /**
-     * Refresh Token 생성 (서버 비용 절감을 위해 가볍게 subject만 탑재)
+     * Refresh Token 생성 (재발급에 필요한 subject(이메일)만 포함)
      */
     fun createRefreshToken(email: String): String {
         val now = Date()

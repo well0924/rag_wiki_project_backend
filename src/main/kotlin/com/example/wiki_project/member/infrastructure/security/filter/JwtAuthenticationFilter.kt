@@ -32,7 +32,7 @@ class JwtAuthenticationFilter(
         if (token != null && jwtTokenProvider.validateToken(token) && jwtTokenProvider.isAccessToken(token)) {
             // [Blacklist Pre-check] 해당 토큰이 블랙리스트에 등록되어 있는지 확인
             if (redisTemplate.hasKey("blacklist:$token") == true) {
-                // 시큐리티 코어 예외 던지기 -> 상위 JwtExceptionFilter가 잡아서 401 JSON 응답
+                // 예외를 던지면 앞단의 JwtExceptionFilter 가 401 JSON 응답으로 변환
                 throw BadCredentialsException("로그아웃되거나 파기된 인증 자격 증명입니다.")
             }
 

@@ -38,7 +38,7 @@ class AdminController(
     @Operation(summary = "회원 강제 추방 (탈퇴)", description = "어드민 권한으로 특정 분탕 유저를 강제 Soft Delete 처리하고 세션을 추방합니다.", security = [SecurityRequirement(name = "BearerAuth")])
     @DeleteMapping("/members/{id}")
     fun forceWithdraw(@PathVariable("id") id: Long): ResponseEntity<Unit> {
-        // 서비스 단에 새로 추가할 어드민 전용 강제 탈퇴 메서드 호출
+        // 관리자 강제 탈퇴 (세션 즉시 무효화 포함)
         adminService.forceWithdrawMemberByAdmin(id)
         return ResponseEntity.noContent().build()
     }

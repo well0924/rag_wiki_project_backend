@@ -12,7 +12,7 @@ class CustomAuthenticationManager(
     private val googleOAuth2AuthenticationProvider: GoogleOAuth2AuthenticationProvider
 ) : AuthenticationManager {
 
-    // 내부적으로 하이버네이트와 시큐리티가 지원하는 멀티 프로바이더 매니저를 위임하는 방식
+    // 토큰 타입을 지원하는 Provider 를 찾아 인증을 맡기는 ProviderManager 에 위임
     private val delegate: ProviderManager = ProviderManager(
         listOf(customAuthenticationProvider, googleOAuth2AuthenticationProvider)
     )

@@ -15,7 +15,7 @@ interface DocumentPermissionRepository: JpaRepository<DocumentPermissionJpaEntit
         FROM DocumentPermissionJpaEntity dp 
         WHERE dp.documentId = :documentId 
           AND dp.groupId IN :groupIds
-    """) // 굳이 등급을 텍스트로 안 쪼개고, 매핑이 있는지만 확인해도 권한 필터가 작동해!
+    """) // 권한 등급 없이 문서-그룹 매핑 존재 여부만으로 접근 권한 판단
     fun hasReadPermission(
         @Param("documentId") documentId: Long,
         @Param("groupIds") groupIds: List<Long>

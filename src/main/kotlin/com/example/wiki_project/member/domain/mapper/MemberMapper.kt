@@ -49,8 +49,8 @@ fun UserGroupModel.toEntity(): UserGroup = UserGroup(
 // 3. UserGroupMember ↔ UserGroupMemberModel
 // ==============================
 fun UserGroupMember.toModel(): UserGroupMemberModel = UserGroupMemberModel(
-    member = this.member.toModel(), // MemberEntity -> MemberModel 변환 작동
-    group = this.group.toModel()    // UserGroupEntity -> UserGroupModel 변환 작동
+    member = this.member.toModel(), // MemberEntity -> MemberModel
+    group = this.group.toModel()    // UserGroupEntity -> UserGroupModel
 )
 
 fun UserGroupMemberModel.toEntity(): UserGroupMember = UserGroupMember(

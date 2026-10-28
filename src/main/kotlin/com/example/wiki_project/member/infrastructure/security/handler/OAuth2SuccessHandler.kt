@@ -32,29 +32,29 @@ class OAuth2SuccessHandler(
         response: HttpServletResponse,
         authentication: Authentication
     ) {
-        // OAuth2 기본 필터가 구글로부터 받아온 로우 데이터 객체
+        // CustomOAuth2UserService 가 반환한 구글 사용자 정보
         val oAuth2User = authentication.principal as OAuth2User
 
-        // CustomOAuth2UserService에서 파싱해 둔 안전한 String 데이터 추출
+        // 검증을 마친 이메일 / 이름
         val email = oAuth2User.attributes["extractedEmail"] as String
         val name = oAuth2User.attributes["extractedName"] as String
 
         // 1. 아직 인증 전 상태인 구글 전용 인증 토큰 생성
         val googleToken = GoogleOAuth2AuthenticationToken(email, name)
 
-        // 2. 핵심: 매니저에게 인증 대행 요청
-        // -> 매니저 내부에 위임된 Provider 체인 중 GoogleOAuth2AuthenticationProvider가 낚아채서
-        // -> 자동 회원가입(JIT)을 시키거나, Soft Delete(탈퇴 계정) 검증을 원자적으로 수행함!
+        // 2. 인증 매니저에 위임
+        // -> GoogleOAuth2AuthenticationProvider 가 처리
+        // -> 신규 회원은 자동 가입(JIT), 탈퇴 회원은 로그인 차단
         val authenticatedResult = authenticationManager.authenticate(googleToken)
 
-        // 3. 무사히 통과했다면 인증이 완료된 최종 Principal(CustomUserDetails) 확보
+        // 3. 인증 완료된 사용자 정보 (CustomUserDetails)
         val userDetails = authenticatedResult.principal as CustomUserDetails
 
-        // 4. 우리 시스템 전용 명품 JWT 세트(Access / Refresh) 생성
+        // 4. 서비스 JWT (Access / Refresh) 발급
         val accessToken = jwtTokenProvider.createAccessToken(authenticatedResult)
         val refreshToken = jwtTokenProvider.createRefreshToken(userDetails.username)
 
-        // 5. 탈퇴 및 세션 강제 추방 방어선을 위해 Redis에 리프레시 토큰 안전하게 적재
+        // 5. Refresh Token 을 Redis 에 저장 (재발급 검증, 로그아웃 / 추방 시 무효화)
         tokenRepository.saveRefreshToken(userDetails.username, refreshToken)
 
         // 6. 토큰은 Redis 에 보관하고 프론트엔드 콜백 주소에는 30초짜리 일회용 코드만 전달

@@ -26,13 +26,13 @@ class SearchHistoryEntity(
     @Column(columnDefinition = "TEXT")
     val answer: String?,
 
-    // PostgreSQL 내 text[] 타입을 하이버네이트 6 사상에 맞춰 바인딩 유도
+    // PostgreSQL text[] 배열 컬럼에 매핑
     @Type(ListArrayType::class)
     @Column(name = "referenced_chunk_ids", columnDefinition = "text[]")
     val referencedChunkIds: List<String> = emptyList(),
 
     @Column(nullable = true)
-    var feedback: Boolean? = null, // 품질 측정을 위한 추천/비추천 토글 가드
+    var feedback: Boolean? = null, // 추천(true) / 비추천(false) / 미선택(null)
 
     @Column(name = "created_at", updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now()

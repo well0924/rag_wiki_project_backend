@@ -73,7 +73,7 @@ class DocumentService(
      * 확장자 화이트리스트 검증 + 임베딩용 텍스트 추출 (DB 저장 전 단계)
      */
     private fun prepareUpload(command: DocumentUploadCommand): PreparedUpload {
-        // 파일 확장자(docType) 맑게 파싱 (없으면 "UNKNOWN")
+        // 파일 확장자로 문서 형식 판별 (확장자가 없으면 "UNKNOWN")
         val docType = command.originalFilename?.substringAfterLast('.', "UNKNOWN")?.uppercase() ?: "UNKNOWN"
 
         if (docType !in ALLOWED_DOC_TYPES) {
@@ -94,7 +94,7 @@ class DocumentService(
         val storageKey = "documents/${java.util.UUID.randomUUID()}.${docType.lowercase()}"
         fileStorage.store(storageKey, command.fileBytes)
 
-        // RDB DB 작업은 확실하게 Dispatchers.IO로 격리하여 블로킹 수행
+        // DB 저장은 블로킹 작업이므로 Dispatchers.IO 컨텍스트에서 수행
         // - DB 저장 실패 시 방금 저장한 파일은 고아 파일이 되므로 정리 후 예외 전파
         val documentId = try {
             documentCommandRepository.saveDocumentWithPermissions(command, docType, storageKey)
@@ -103,7 +103,7 @@ class DocumentService(
             throw e
         }
 
-        // Redis Streams 'XADD' 비동기 큐잉 처리
+        // Redis Streams 에 인덱싱 이벤트 발행 (XADD)
         val event = DocumentUploadedEvent(
             documentId = documentId.toString(),
             content = prepared.content,
@@ -136,7 +136,7 @@ class DocumentService(
 
         if (entity.isDeleted) throw BusinessException(ErrorCode.DOCUMENT_NOT_FOUND)
 
-        // 영속 엔티티를 순수 도메인 모델로 치환하여 비즈니스 유효성 검증 전개
+        // 엔티티를 도메인 모델로 변환하여 상태 전이 규칙 검증
         var documentModel = entity.toModel()
         documentModel = when (targetStatus) {
             DocumentStatus.PROCESSING -> documentModel.startProcessing()
@@ -145,7 +145,7 @@ class DocumentService(
             DocumentStatus.UPLOADED -> throw IllegalArgumentException("이미 업로드된 문서를 초기 UPLOADED 상태로 되돌릴 수 없습니다.")
         }
 
-        // 도메인 규칙이 반영된 최종 상태를 엔티티에 격 격리 갱신
+        // 검증을 통과한 상태를 엔티티에 반영
         entity.status = documentModel.status
         entity.updatedAt = LocalDateTime.now()
     }
@@ -158,7 +158,7 @@ class DocumentService(
         val entity = documentRepository.findById(documentId)
             .orElseThrow { BusinessException(ErrorCode.DOCUMENT_NOT_FOUND) }
 
-        // Soft Delete 벤 가드
+        // 삭제(Soft Delete)된 문서는 조회 불가
         if (entity.isDeleted) throw BusinessException(ErrorCode.DOCUMENT_NOT_FOUND)
 
         // [보안 가드] 어드민이 아니라면 유저의 소속 부서 그룹 권한 교집합 체크
@@ -177,7 +177,7 @@ class DocumentService(
      */
     @Transactional(readOnly = true)
     fun getAccessibleDocuments(userGroupIds: List<Long>, isAdmin: Boolean): List<DocumentModel> {
-        // 복합 조인 인프라 쿼리에 조건 처리를 완전히 위임
+        // 권한 조건은 조인 쿼리에서 처리
         val entities = documentRepository.findAccessibleDocuments(userGroupIds, isAdmin)
         return entities.map { it.toModel() }
     }
@@ -192,11 +192,11 @@ class DocumentService(
 
         if (entity.isDeleted) throw BusinessException(ErrorCode.DOCUMENT_NOT_FOUND)
 
-        // 도메인 모델로 변환하여 소유자 및 권한 체킹 비즈니스 룰 수행
+        // 도메인 모델에서 소유자 / 관리자 여부 검증
         val documentModel = entity.toModel()
         val deletedModel = documentModel.delete(requesterId, isAdmin)
 
-        // 상태값 역변환 후 영속성 컨텍스트 플러시 반영
+        // 변경된 상태를 엔티티에 반영 (트랜잭션 커밋 시 flush)
         documentRepository.save(deletedModel.toEntity())
     }
 
@@ -205,7 +205,7 @@ class DocumentService(
      */
     @Transactional(readOnly = true)
     fun downloadDocument(documentId: Long, userGroupIds: List<Long>, isAdmin: Boolean): DocumentDownload {
-        // 1. 기존 권한 가드 로직 재사용 (이미 잘 만들어져 있음)
+        // 1. 단건 조회와 동일한 권한 검증 재사용
         val document = getDocumentById(documentId, userGroupIds, isAdmin)
 
         // 2. 저장소에서 원본 파일 조회 (S3 도입 전 더미 URL 로 저장된 기존 문서는 파일이 없으므로 404)

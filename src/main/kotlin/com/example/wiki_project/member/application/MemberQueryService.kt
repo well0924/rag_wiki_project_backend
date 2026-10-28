@@ -18,7 +18,7 @@ class MemberQueryService(
     /**
      * 이메일 기반 유저 그룹 ID 리스트 조회
      * ROLE_ADMIN 권한을 가진 유저는 전사 문서 접근 권한이 있으므로
-     * 굳이 매핑 테이블(user_group_members)을 조회하지 않고 곧바로 빈 리스트를 반환하여 인덱스 스캔 비용마저 아낌.
+     * 매핑 테이블(user_group_members)을 조회하지 않고 빈 리스트를 반환 (불필요한 쿼리 생략).
      */
     fun findGroupIds(memberModel: MemberModel): MemberAuthInfo {
         if (memberModel.role == Role.ROLE_ADMIN) {

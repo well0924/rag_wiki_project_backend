@@ -48,15 +48,15 @@ class PythonClientConfig(
                 .uri("/api/v1/rag/search")
                 .bodyValue(requestBody)
                 .retrieve()
-                .awaitBody<PythonSearchResponse>() // 리액티브 WebClient를 코루틴 suspend 사상으로 전환하는 마법의 키!
+                .awaitBody<PythonSearchResponse>() // Mono 응답을 코루틴 suspend 방식으로 대기
         } catch (e: Exception) {
-            // AI 서버 다운 등 인프라 장애 발생 시 도메인 격리를 위한 예외 치환
+            // AI 서버 장애를 도메인 예외로 변환하여 호출 측에 전달
             throw BusinessException(ErrorCode.AI_SERVER_COMMUNICATION_FAILED)
         }
     }
 
     /**
-     * 새벽 배치 작업 시, 삭제된 문서의 벡터 청크 파기를 파이썬 진영에 요청
+     * 영구 삭제 배치에서 삭제된 문서의 벡터 청크 삭제를 AI 서버에 요청
      */
     suspend fun clearVectorChunks(documentId: Long) {
         try {

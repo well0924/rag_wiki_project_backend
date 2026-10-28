@@ -14,19 +14,19 @@ class SearchUsecase(
 ) {
 
     /**
-     * 전체 RAG 자연어 지능형 검색 흐름 관제 파이프라인
+     * RAG 검색 흐름: AI 서버 검색 → 검색 기록 저장 → 응답 구성
      */
     suspend fun executeSearch(
         memberId: Long,
         query: String,
         userGroupIds: List<Long>,
         isAdmin: Boolean
-    ): SearchResponse = withContext(Dispatchers.IO) { // 코루틴 격리 스레드 가동
+    ): SearchResponse = withContext(Dispatchers.IO) { // 검색 기록 저장(블로킹 DB 작업)이 포함되므로 IO 디스패처에서 실행
 
-        // 1. Python AI 서버 연동 및 벡터 스캔 답변 추출
+        // 1. AI 서버에 권한 필터 검색 + 답변 생성 요청
         val aiResponse = pythonAiClient.searchFromRAG(query, userGroupIds, isAdmin)
 
-        // 2. 우리가 방금 격파한 품질 측정 로그 적재 엔진 가동 ( search_history 저장 )
+        // 2. 검색 기록 저장 (피드백 / 품질 모니터링용)
         val historyId = searchHistoryService.recordSearchHistory(
             memberId = memberId,
             query = query,
@@ -34,7 +34,7 @@ class SearchUsecase(
             referencedChunkIds = aiResponse.referencedChunkIds
         )
 
-        // 3. 최종 자연어 답변 + 피드백용 historyId 프론트엔드로 즉시 서빙 반환
+        // 3. 답변 + 출처 + 피드백용 historyId 반환
         SearchResponse(
             historyId = historyId,
             answer = aiResponse.answer,

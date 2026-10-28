@@ -73,7 +73,7 @@ class MemberService(
     }
 
     /**
-     * 회원 이름 단독 변경 (도메인 특정 로직 매핑)
+     * 회원 이름 변경
      */
     @Transactional
     fun updateUserName(id: Long, newName: String): MemberModel {
