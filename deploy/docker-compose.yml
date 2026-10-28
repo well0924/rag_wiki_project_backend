@@ -45,6 +45,11 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
       CORS_ALLOWED_ORIGINS: ${FRONTEND_URL}
       LOGGING_LEVEL_ORG_HIBERNATE_SQL: INFO
+      # 문서 원본 파일 저장 위치 (S3 도입 전 임시 로컬 저장소)
+      STORAGE_LOCAL_BASE_DIR: /data/uploads
+    volumes:
+      # 호스트 ~/wiki/uploads (setup-ec2.sh 가 ubuntu(1000) 소유로 생성) → 컨테이너 실행 유저(1000)가 쓰기 가능
+      - ./uploads:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy

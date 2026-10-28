@@ -1,6 +1,7 @@
 package com.example.wiki_project.domain.document
 
 import com.example.wiki_project.common.batch.DocumentSyncBatchConfig
+import com.example.wiki_project.document.application.FileStorage
 import com.example.wiki_project.document.domain.entity.DocumentEntity
 import com.example.wiki_project.document.domain.entity.DocumentPermissionJpaEntity
 import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
@@ -11,7 +12,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.springframework.batch.core.BatchStatus
@@ -43,6 +45,10 @@ class DocumentHardDeleteJobTest {
     @MockitoBean
     private lateinit var pythonClientConfig: PythonClientConfig
 
+    // 실제 디스크 대신 원본 파일 삭제 요청만 기록
+    @MockitoBean
+    private lateinit var fileStorage: FileStorage
+
     private val createdIds = mutableListOf<Long>()
 
     @AfterEach
@@ -56,7 +62,7 @@ class DocumentHardDeleteJobTest {
             (1..count).map {
                 DocumentEntity(
                     title = "batch-test-$it",
-                    contentUrl = "batch-test-url-$it",
+                    contentUrl = "batch-test-${if (isDeleted) "deleted" else "alive"}-url-$it",
                     docType = "TXT",
                     fileSize = 1L,
                     isDeleted = isDeleted,
@@ -84,6 +90,9 @@ class DocumentHardDeleteJobTest {
         assertThat(documentRepository.findAllById(deletedIds)).isEmpty()
         assertThat(documentRepository.findAllById(aliveIds)).hasSize(2)
         assertThat(documentPermissionRepository.findAll().filter { it.documentId in deletedIds }).isEmpty()
-        runBlocking { verify(pythonClientConfig, times(250)).clearVectorChunks(any()) }
+        // DB에 이전부터 남아 있던 삭제 문서도 함께 처리될 수 있으므로, 이 테스트가 만든 문서 기준으로만 검증
+        runBlocking { deletedIds.forEach { verify(pythonClientConfig).clearVectorChunks(it) } }
+        verify(fileStorage, times(250)).delete(argThat { startsWith("batch-test-deleted-url-") })
+        verify(fileStorage, never()).delete(argThat { startsWith("batch-test-alive-url-") })
     }
 }

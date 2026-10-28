@@ -21,7 +21,8 @@ if ! sudo swapon --show | grep -q /swapfile; then
 fi
 
 # 3. 배포 디렉터리 (.env 는 직접 작성: deploy/.env.example 참고)
-mkdir -p ~/wiki
+#    uploads: 문서 원본 파일 저장소 (docker 가 먼저 만들면 root 소유가 되어 backend(1000) 가 쓰지 못하므로 미리 생성)
+mkdir -p ~/wiki/uploads
 
 echo "완료. 다시 로그인해야 docker 그룹 권한이 적용됩니다."
 echo "다음 단계: ~/wiki/.env 작성 → GitHub Actions 배포 실행"

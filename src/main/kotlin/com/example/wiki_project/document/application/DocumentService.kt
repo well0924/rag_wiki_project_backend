@@ -2,6 +2,7 @@ package com.example.wiki_project.document.application
 
 import com.example.wiki_project.common.exception.BusinessException
 import com.example.wiki_project.common.exception.ErrorCode
+import com.example.wiki_project.document.application.dto.DocumentDownload
 import com.example.wiki_project.document.application.dto.DocumentUploadCommand
 import com.example.wiki_project.document.application.dto.DocumentUploadedEvent
 import com.example.wiki_project.document.domain.mapper.toEntity
@@ -27,7 +28,8 @@ class DocumentService(
     private val documentPermissionRepository: DocumentPermissionRepository,
     private val documentCommandRepository: DocumentCommandRepository,
     private val reactiveRedisTemplate: ReactiveRedisTemplate<String, String>,
-    private val documentTextExtractor: DocumentTextExtractor
+    private val documentTextExtractor: DocumentTextExtractor,
+    private val fileStorage: FileStorage
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -83,20 +85,25 @@ class DocumentService(
         val command = prepared.command
         val docType = prepared.docType
 
-        // 가짜 S3 보류 가드: 임시 URL 먼저 구워내기 (나중에 S3 주입 시 교체할 지점)
-        // 주의: 실제 ID 기반으로 URL을 만들려면 영속화가 먼저 필요할 수 있으므로, 임시 범용 경로 규칙으로 조합
-        // 파일명 오염 방지를 위해 고유한 임시 키 조합 (UUID 활용 추천)
-        val uniqueKey = java.util.UUID.randomUUID().toString()
-        val dummyContentUrl = "https://amazonaws.com${uniqueKey}_${command.title}.$docType"
+        // 원본 파일 저장 (key 는 사용자 입력 제목 대신 UUID 로 생성 → 파일명 충돌 / 경로 조작 방지)
+        // - S3 도입 시 FileStorage 구현체만 교체하고, key 는 S3 object key 로 그대로 사용
+        val storageKey = "documents/${java.util.UUID.randomUUID()}.${docType.lowercase()}"
+        fileStorage.store(storageKey, command.fileBytes)
 
         // RDB DB 작업은 확실하게 Dispatchers.IO로 격리하여 블로킹 수행
-        val documentId = documentCommandRepository.saveDocumentWithPermissions(command, docType, dummyContentUrl)
+        // - DB 저장 실패 시 방금 저장한 파일은 고아 파일이 되므로 정리 후 예외 전파
+        val documentId = try {
+            documentCommandRepository.saveDocumentWithPermissions(command, docType, storageKey)
+        } catch (e: Exception) {
+            fileStorage.delete(storageKey)
+            throw e
+        }
 
         // Redis Streams 'XADD' 비동기 큐잉 처리
         val event = DocumentUploadedEvent(
             documentId = documentId.toString(),
             content = prepared.content,
-            s3Url = dummyContentUrl,
+            s3Url = storageKey,
             title = command.title,
             uploaderId = command.uploaderId.toString()
         )
@@ -193,12 +200,17 @@ class DocumentService(
      * 문서 다운로드 요청
      */
     @Transactional(readOnly = true)
-    fun downloadDocument(documentId: Long, userGroupIds: List<Long>, isAdmin: Boolean): DocumentModel {
+    fun downloadDocument(documentId: Long, userGroupIds: List<Long>, isAdmin: Boolean): DocumentDownload {
         // 1. 기존 권한 가드 로직 재사용 (이미 잘 만들어져 있음)
         val document = getDocumentById(documentId, userGroupIds, isAdmin)
 
-        // 2. 다운로드 처리를 위한 모델 반환
-        // 나중에 여기서 s3Service.getPresignedUrl(document.s3Url)을 호출할 예정
-        return document
+        // 2. 저장소에서 원본 파일 조회 (S3 도입 전 더미 URL 로 저장된 기존 문서는 파일이 없으므로 404)
+        val resource = fileStorage.load(document.contentUrl)
+            ?: throw BusinessException(ErrorCode.DOCUMENT_FILE_NOT_FOUND)
+
+        return DocumentDownload(
+            fileName = "${document.title}.${document.docType.lowercase()}",
+            resource = resource
+        )
     }
 }

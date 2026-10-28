@@ -4,6 +4,7 @@ import com.example.wiki_project.common.exception.BusinessException
 import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.document.application.DocumentCommandRepository
 import com.example.wiki_project.document.application.DocumentService
+import com.example.wiki_project.document.application.FileStorage
 import com.example.wiki_project.document.application.dto.DocumentUploadCommand
 import com.example.wiki_project.document.domain.entity.DocumentEntity
 import com.example.wiki_project.document.domain.model.DocumentModel
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.*
+import org.springframework.core.io.ByteArrayResource
 import org.springframework.data.redis.connection.stream.RecordId
 import org.springframework.data.redis.connection.stream.StringRecord
 import org.springframework.data.redis.core.ReactiveRedisTemplate
@@ -40,6 +42,7 @@ class DocumentServiceTest {
     @Mock private lateinit var reactiveRedisTemplate: ReactiveRedisTemplate<String, String>
     @Mock private lateinit var reactiveStreamOperations: ReactiveStreamOperations<String, String, String>
     @Mock private lateinit var documentCommandRepository: DocumentCommandRepository
+    @Mock private lateinit var fileStorage: FileStorage
 
     private lateinit var documentService: DocumentService
 
@@ -50,7 +53,8 @@ class DocumentServiceTest {
             documentPermissionRepository = documentPermissionRepository,
             reactiveRedisTemplate = reactiveRedisTemplate,
             documentCommandRepository = documentCommandRepository,
-            documentTextExtractor = DocumentTextExtractor() // 순수 로직이므로 실제 추출기 사용
+            documentTextExtractor = DocumentTextExtractor(), // 순수 로직이므로 실제 추출기 사용
+            fileStorage = fileStorage
         )
     }
 
@@ -85,8 +89,35 @@ class DocumentServiceTest {
 
             // then
             assertThat(resultId).isEqualTo(99L)
-            verify(documentCommandRepository).saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), any())
+            // 원본 파일은 UUID 기반 key 로 저장되고, 같은 key 가 content_url 로 저장되어야 한다
+            val keyCaptor = argumentCaptor<String>()
+            verify(fileStorage).store(keyCaptor.capture(), eq(command.fileBytes))
+            assertThat(keyCaptor.firstValue).startsWith("documents/").endsWith(".md")
+            verify(documentCommandRepository).saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), eq(keyCaptor.firstValue))
             verify(reactiveStreamOperations).add(any(StringRecord::class.java)) // Redis Streams XADD 호출 팩트 체크
+        }
+
+        @Test
+        @DisplayName("원본 파일 저장 후 DB 저장이 실패하면 저장한 파일을 삭제하고 예외를 전파한다 (고아 파일 방지)")
+        fun uploadDocumentDeletesFileWhenDbSaveFails() = runTest {
+            // given
+            val command = DocumentUploadCommand(
+                title = "사내 가이드라인",
+                originalFilename = "guide.md",
+                fileSize = 1024L,
+                fileBytes = "# 사내 가이드라인".toByteArray(),
+                uploaderId = 1L,
+                targetGroupIds = listOf(10L)
+            )
+            whenever(documentCommandRepository.saveDocumentWithPermissions(any(DocumentUploadCommand::class.java), any(), any()))
+                .thenThrow(IllegalStateException("DB connection lost"))
+
+            // when & then
+            assertThrows<IllegalStateException> { documentService.uploadDocument(command) }
+            val keyCaptor = argumentCaptor<String>()
+            verify(fileStorage).store(keyCaptor.capture(), any())
+            verify(fileStorage).delete(keyCaptor.firstValue)
+            verifyNoInteractions(reactiveRedisTemplate)
         }
 
         @Test
@@ -371,21 +402,41 @@ class DocumentServiceTest {
     @DisplayName("문서 다운로드(downloadDocument) 검증")
     inner class DownloadDocumentValidation {
         @Test
-        @DisplayName("권한이 있는 문서라면 상세 정보(DownloadModel)를 정상 반환한다")
+        @DisplayName("권한이 있는 문서라면 저장소의 원본 파일과 확장자가 붙은 파일명을 반환한다")
         fun downloadDocumentSuccess() {
             // given
             val docId = 1L
             val myGroups = listOf(10L)
-            val entity = DocumentEntity(id=docId, title="보고서", contentUrl="s3://path", docType="PDF", fileSize=100L, createdBy=1L, status=DocumentStatus.COMPLETED, isDeleted=false)
+            val entity = DocumentEntity(id=docId, title="보고서", contentUrl="documents/abc.pdf", docType="PDF", fileSize=100L, createdBy=1L, status=DocumentStatus.COMPLETED, isDeleted=false)
+            val resource = ByteArrayResource("pdf-bytes".toByteArray())
 
             whenever(documentRepository.findById(docId)).thenReturn(Optional.of(entity))
             whenever(documentPermissionRepository.hasReadPermission(docId, myGroups)).thenReturn(true)
+            whenever(fileStorage.load("documents/abc.pdf")).thenReturn(resource)
 
             // when
             val result = documentService.downloadDocument(docId, myGroups, isAdmin = false)
 
             // then
-            assertThat(result.title).isEqualTo("보고서")
+            assertThat(result.fileName).isEqualTo("보고서.pdf")
+            assertThat(result.resource).isSameAs(resource)
+        }
+
+        @Test
+        @DisplayName("저장소에 원본 파일이 없으면(S3 도입 전 더미 URL 문서 등) DOCUMENT_FILE_NOT_FOUND 예외를 던진다")
+        fun downloadDocumentFailWhenFileMissing() {
+            // given
+            val docId = 1L
+            val myGroups = listOf(10L)
+            val entity = DocumentEntity(id=docId, title="보고서", contentUrl="https://amazonaws.comdummy_보고서.PDF", docType="PDF", fileSize=100L, createdBy=1L, status=DocumentStatus.COMPLETED, isDeleted=false)
+
+            whenever(documentRepository.findById(docId)).thenReturn(Optional.of(entity))
+            whenever(documentPermissionRepository.hasReadPermission(docId, myGroups)).thenReturn(true)
+            whenever(fileStorage.load(any())).thenReturn(null)
+
+            // when & then
+            val exception = assertThrows<BusinessException> { documentService.downloadDocument(docId, myGroups, isAdmin = false) }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_FILE_NOT_FOUND)
         }
     }
 

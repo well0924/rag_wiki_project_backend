@@ -47,3 +47,6 @@ out/
 ### JVM crash logs ###
 hs_err_pid*.log
 replay_pid*.log
+
+### Local file storage (LocalFileStorage 기본 경로) ###
+/data/
