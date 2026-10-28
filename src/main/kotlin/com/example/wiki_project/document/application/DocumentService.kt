@@ -12,6 +12,7 @@ import com.example.wiki_project.document.domain.model.DocumentStatus
 import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
 import com.example.wiki_project.document.infrastructure.DocumentRepository
 import com.example.wiki_project.document.infrastructure.extractor.DocumentTextExtractor
+import org.springframework.data.redis.connection.RedisStreamCommands.XAddOptions
 import org.springframework.data.redis.connection.stream.StringRecord
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,9 @@ class DocumentService(
 
     companion object {
         private const val STREAM_KEY = "document:upload:stream"
+        // 처리 완료(ACK)된 메시지도 스트림에는 계속 남으므로 최근 약 1,000건만 유지 (본문 포함이라 메모리 상한 확보)
+        // - '~' 근사 트리밍: 정확히 자르지 않고 내부 노드 단위로 잘라 XADD 비용을 낮춤
+        val STREAM_ADD_OPTIONS: XAddOptions = XAddOptions.maxlen(1000).approximateTrimming(true)
         private val ALLOWED_DOC_TYPES = setOf("TXT", "PDF", "DOCX", "MD")
     }
 
@@ -114,7 +118,7 @@ class DocumentService(
         // - DB 저장은 끝났는데 발행만 실패하면 문서가 UPLOADED로 방치되므로 FAILED로 전환 후 예외 응답
         try {
             reactiveRedisTemplate.opsForStream<String, String>()
-                .add(record)
+                .add(record, STREAM_ADD_OPTIONS)
                 .awaitSingle()
         } catch (e: Exception) {
             log.error("문서 인덱싱 이벤트 발행 실패: documentId={}", documentId, e)

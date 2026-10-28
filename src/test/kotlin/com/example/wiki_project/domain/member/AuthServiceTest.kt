@@ -1,12 +1,16 @@
 package com.example.wiki_project.domain.member
 
+import com.example.wiki_project.common.exception.BusinessException
+import com.example.wiki_project.common.exception.ErrorCode
 import com.example.wiki_project.member.application.AuthService
 import com.example.wiki_project.member.application.dto.LoginCommand
+import com.example.wiki_project.member.application.dto.TokenResponse
 import com.example.wiki_project.member.domain.model.MemberModel
 import com.example.wiki_project.member.domain.model.Role
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupRepository
+import com.example.wiki_project.member.infrastructure.security.OAuth2LoginCodeRepository
 import com.example.wiki_project.member.infrastructure.security.RedisTokenRepository
 import com.example.wiki_project.member.infrastructure.security.UserCacheRepository
 import com.example.wiki_project.member.infrastructure.security.auth.CustomAuthenticationManager
@@ -44,6 +48,7 @@ class AuthServiceTest {
     @Mock private lateinit var userCacheRepository: UserCacheRepository
     @Mock private lateinit var passwordEncoder: PasswordEncoder
     @Mock private lateinit var userDetailsService: CustomUserDetailsService
+    @Mock private lateinit var oAuth2LoginCodeRepository: OAuth2LoginCodeRepository
 
     @InjectMocks
     private lateinit var authService: AuthService
@@ -177,5 +182,29 @@ class AuthServiceTest {
         // when & then
         assertThatThrownBy { authService.reissue(invalidToken) }
             .isInstanceOf(JwtException::class.java)
+    }
+
+    @Test
+    @DisplayName("소셜 로그인 일회용 코드가 유효하면 저장해 둔 토큰 세트로 교환해 준다")
+    fun exchangeOAuth2LoginCodeSuccess() {
+        // given
+        val tokens = TokenResponse("access-token", "refresh-token")
+        `when`(oAuth2LoginCodeRepository.consume("valid-code")).thenReturn(tokens)
+
+        // when & then
+        assertThat(authService.exchangeOAuth2LoginCode("valid-code")).isEqualTo(tokens)
+    }
+
+    @Test
+    @DisplayName("만료되었거나 이미 사용된 코드면 401 예외를 던진다")
+    fun exchangeOAuth2LoginCodeFailWhenConsumed() {
+        // given
+        `when`(oAuth2LoginCodeRepository.consume("used-code")).thenReturn(null)
+
+        // when & then
+        assertThatThrownBy { authService.exchangeOAuth2LoginCode("used-code") }
+            .isInstanceOf(BusinessException::class.java)
+            .extracting("errorCode")
+            .isEqualTo(ErrorCode.INVALID_OAUTH2_LOGIN_CODE)
     }
 }

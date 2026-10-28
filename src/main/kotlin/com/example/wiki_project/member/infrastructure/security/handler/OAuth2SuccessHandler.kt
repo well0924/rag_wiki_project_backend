@@ -1,5 +1,7 @@
 package com.example.wiki_project.member.infrastructure.security.handler
 
+import com.example.wiki_project.member.application.dto.TokenResponse
+import com.example.wiki_project.member.infrastructure.security.OAuth2LoginCodeRepository
 import com.example.wiki_project.member.infrastructure.security.RedisTokenRepository
 import com.example.wiki_project.member.infrastructure.security.auth.CustomAuthenticationManager
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
@@ -21,6 +23,7 @@ class OAuth2SuccessHandler(
     private val authenticationManager: CustomAuthenticationManager,
     private val jwtTokenProvider: JwtTokenProvider,
     private val tokenRepository: RedisTokenRepository,
+    private val loginCodeRepository: OAuth2LoginCodeRepository,
     @Value("\${app.frontend-url:http://localhost:3000}") private val frontendUrl: String
 ) : SimpleUrlAuthenticationSuccessHandler() {
 
@@ -54,10 +57,12 @@ class OAuth2SuccessHandler(
         // 5. 탈퇴 및 세션 강제 추방 방어선을 위해 Redis에 리프레시 토큰 안전하게 적재
         tokenRepository.saveRefreshToken(userDetails.username, refreshToken)
 
-        // 6. 프론트엔드(React 등) 콜백 주소에 토큰을 파라미터로 심어서 우아하게 토스
+        // 6. 토큰은 Redis 에 보관하고 프론트엔드 콜백 주소에는 30초짜리 일회용 코드만 전달
+        // - URL 에 토큰을 직접 실으면 브라우저 기록, 프록시/서버 접근 로그, Referer 헤더로 노출됨
+        // - 프론트는 POST /api/v1/auth/oauth2/token 으로 코드를 토큰 세트로 교환
+        val code = loginCodeRepository.issue(TokenResponse(accessToken, refreshToken))
         val targetUrl = UriComponentsBuilder.fromUriString("$frontendUrl/oauth2/redirect")
-            .queryParam("accessToken", accessToken)
-            .queryParam("refreshToken", refreshToken)
+            .queryParam("code", code)
             .build()
             .encode(StandardCharsets.UTF_8)
             .toUriString()
