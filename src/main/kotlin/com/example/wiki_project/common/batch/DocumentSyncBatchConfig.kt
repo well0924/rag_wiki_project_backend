@@ -1,5 +1,6 @@
 package com.example.wiki_project.common.batch
 
+import com.example.wiki_project.document.application.FileStorage
 import com.example.wiki_project.document.domain.entity.DocumentEntity
 import com.example.wiki_project.document.infrastructure.client.PythonClientConfig
 import jakarta.persistence.EntityManager
@@ -25,7 +26,8 @@ class DocumentSyncBatchConfig(
     private val jobRepository: JobRepository,
     private val transactionManager: PlatformTransactionManager,
     private val entityManagerFactory: EntityManagerFactory,
-    private val pythonClientConfig: PythonClientConfig
+    private val pythonClientConfig: PythonClientConfig,
+    private val fileStorage: FileStorage
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -88,8 +90,10 @@ class DocumentSyncBatchConfig(
             runBlocking {
                 pythonClientConfig.clearVectorChunks(documentId)
             }
+            // 원본 파일 삭제 (이미 없으면 무시 → 이후 RDB 삭제가 실패해 재실행되어도 안전)
+            fileStorage.delete(document.contentUrl)
 
-            log.info("Document ID: {} 벡터 청크 파기 완료", documentId)
+            log.info("Document ID: {} 벡터 청크 및 원본 파일 파기 완료", documentId)
             document
         }
     }

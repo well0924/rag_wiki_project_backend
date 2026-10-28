@@ -9,8 +9,8 @@ import com.example.wiki_project.document.domain.model.DocumentModel
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
-import org.springframework.core.io.FileSystemResource
 import org.springframework.core.io.Resource
+import org.springframework.http.ContentDisposition
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
-import java.io.File
+import java.nio.charset.StandardCharsets
 
 @RestController
 @RequestMapping("/api/v1/documents")
@@ -136,21 +136,22 @@ class DocumentController(
         @AuthenticationPrincipal user: CustomUserDetails
     ): ResponseEntity<Resource> {
 
-        // 서비스 호출
-        val document = documentService.downloadDocument(
+        // 서비스 호출 (권한 검증 + 저장소에서 원본 파일 조회)
+        val download = documentService.downloadDocument(
             documentId,
             user.groupIds,
             user.isAdmin
         )
 
-        // 파일 로드 (현재는 로컬 경로라 가정, 나중에 S3로 바꾸면 됨)
-        val file = File(document.contentUrl) // 또는 s3Url을 통해 다운로드
-        val resource = FileSystemResource(file)
+        // 한글 파일명이 깨지지 않도록 RFC 5987 형식(filename*=UTF-8'')으로 인코딩
+        val contentDisposition = ContentDisposition.attachment()
+            .filename(download.fileName, StandardCharsets.UTF_8)
+            .build()
 
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${document.title}\"")
+            .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
             .contentType(MediaType.APPLICATION_OCTET_STREAM)
-            .body(resource)
+            .body(download.resource)
     }
 
 }
