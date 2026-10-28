@@ -2,6 +2,7 @@ package com.example.wiki_project.searchhistory.application
 
 import com.example.wiki_project.document.infrastructure.client.PythonClientConfig
 import com.example.wiki_project.searchhistory.application.dto.SearchResponse
+import com.example.wiki_project.searchhistory.application.dto.SearchSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.springframework.stereotype.Service
@@ -37,7 +38,8 @@ class SearchUsecase(
         SearchResponse(
             historyId = historyId,
             answer = aiResponse.answer,
-            referencedChunkIds = aiResponse.referencedChunkIds
+            referencedChunkIds = aiResponse.referencedChunkIds,
+            sources = aiResponse.sources.map { SearchSource(it.documentId, it.title, it.similarity) }
         )
     }
 }

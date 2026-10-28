@@ -2,8 +2,10 @@ package com.example.wiki_project.domain.searchhistory
 
 import com.example.wiki_project.document.infrastructure.client.PythonClientConfig
 import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchResponse
+import com.example.wiki_project.document.infrastructure.client.dto.PythonSearchSource
 import com.example.wiki_project.searchhistory.application.SearchHistoryService
 import com.example.wiki_project.searchhistory.application.SearchUsecase
+import com.example.wiki_project.searchhistory.application.dto.SearchSource
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
@@ -23,7 +25,11 @@ class SearchUsecaseTest {
     fun executeSearchReturnsHistoryId() = runTest {
         // given
         val groupIds = listOf(3L, 7L)
-        val aiResponse = PythonSearchResponse(answer = "IdClass를 쓰시면 됩니다.", referencedChunkIds = listOf("11", "12"))
+        val aiResponse = PythonSearchResponse(
+            answer = "IdClass를 쓰시면 됩니다. [1]",
+            referencedChunkIds = listOf("11", "12"),
+            sources = listOf(PythonSearchSource(documentId = 5L, title = "JPA 가이드", similarity = 0.72))
+        )
         org.mockito.kotlin.whenever(pythonAiClient.searchFromRAG("JPA 복합키", groupIds, false)).doReturn(aiResponse)
         org.mockito.kotlin.whenever(
             searchHistoryService.recordSearchHistory(10L, "JPA 복합키", aiResponse.answer, aiResponse.referencedChunkIds)
@@ -34,8 +40,9 @@ class SearchUsecaseTest {
 
         // then
         assertThat(response.historyId).isEqualTo(55L)
-        assertThat(response.answer).isEqualTo("IdClass를 쓰시면 됩니다.")
+        assertThat(response.answer).isEqualTo("IdClass를 쓰시면 됩니다. [1]")
         assertThat(response.referencedChunkIds).containsExactly("11", "12")
+        assertThat(response.sources).containsExactly(SearchSource(documentId = 5L, title = "JPA 가이드", similarity = 0.72))
         verify(pythonAiClient).searchFromRAG("JPA 복합키", groupIds, false)
     }
 }

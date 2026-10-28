@@ -1,0 +1,10 @@
+# API 도메인 → Spring Boot 리버스 프록시 (Let's Encrypt HTTPS 인증서 자동 발급/갱신)
+{$API_DOMAIN} {
+	encode gzip
+
+	# 서버 간 내부 API는 외부에서 접근 불가 (내부 API 키 인증 위에 한 겹 더)
+	@internal path /api/v1/internal/*
+	respond @internal 404
+
+	reverse_proxy backend:89
+}
