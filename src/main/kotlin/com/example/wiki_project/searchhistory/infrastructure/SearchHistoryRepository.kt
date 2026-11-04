@@ -16,4 +16,7 @@ interface SearchHistoryRepository: JpaRepository<SearchHistoryEntity,Long> {
     // 비추천(false) 피드백을 받은 답변 조회
     // 어떤 질문에서 답변 품질이 낮은지(환각 등) 추적하는 용도
     fun findByFeedbackFalseOrderByIdDesc(pageable: Pageable): Page<SearchHistoryEntity>
+
+    // 피드백 종류별 건수 (관리자 품질 지표용)
+    fun countByFeedback(feedback: Boolean): Long
 }

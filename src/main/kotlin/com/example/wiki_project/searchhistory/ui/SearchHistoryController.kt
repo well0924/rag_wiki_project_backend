@@ -3,6 +3,7 @@ package com.example.wiki_project.searchhistory.ui
 import com.example.wiki_project.member.infrastructure.security.auth.CustomUserDetails
 import com.example.wiki_project.searchhistory.application.SearchHistoryService
 import com.example.wiki_project.searchhistory.application.dto.FeedbackRequest
+import com.example.wiki_project.searchhistory.application.dto.SearchQualityStats
 import com.example.wiki_project.searchhistory.domain.model.SearchHistoryModel
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
@@ -61,5 +62,13 @@ class SearchHistoryController(
     ): ResponseEntity<Page<SearchHistoryModel>> {
         val result = searchHistoryService.getWorstSearchHistoriesForAdmin(userDetails.isAdmin, pageable)
         return ResponseEntity.ok(result)
+    }
+
+    @Operation(summary = "[어드민] 검색 품질 지표 조회", description = "전체 검색 수와 👍 / 👎 건수, 피드백 기준 비율을 반환합니다. 피드백이 없으면 비율은 null입니다.", security = [SecurityRequirement(name = "BearerAuth")])
+    @GetMapping("/admin/stats")
+    fun getQualityStatsForAdmin(
+        @AuthenticationPrincipal userDetails: CustomUserDetails
+    ): ResponseEntity<SearchQualityStats> {
+        return ResponseEntity.ok(searchHistoryService.getQualityStatsForAdmin(userDetails.isAdmin))
     }
 }

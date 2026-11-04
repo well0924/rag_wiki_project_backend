@@ -6,6 +6,8 @@ import com.example.wiki_project.member.application.GroupService
 import com.example.wiki_project.member.domain.entity.MemberEntity
 import com.example.wiki_project.member.domain.entity.UserGroup
 import com.example.wiki_project.member.domain.entity.UserGroupMember
+import com.example.wiki_project.member.domain.entity.UserGroupMemberId
+import com.example.wiki_project.member.domain.model.GroupRole
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupRepository
@@ -36,6 +38,8 @@ class UserGroupServiceTest {
     // 테스트용 공통 가짜 데이터
     private val memberId = 9L
     private val groupId = 100L
+    private val targetId = 20L
+    private val outsiderId = 30L
     private val mockMemberEntity = MemberEntity(
         id = memberId,
         email = "kyungbin@company.com",
@@ -77,6 +81,7 @@ class UserGroupServiceTest {
             verify(userGroupMemberRepository, times(1)).save(check { mapping ->
                 assertThat(mapping.member.id).isEqualTo(memberId)
                 assertThat(mapping.group.id).isEqualTo(groupId)
+                assertThat(mapping.role).isEqualTo(GroupRole.OWNER) // 만든 사람은 OWNER
             })
         }
 
@@ -136,17 +141,32 @@ class UserGroupServiceTest {
             val expectedGroup = UserGroup(id = groupId, groupName = newName)
 
             doReturn(Optional.of(currentGroup)).whenever(userGroupRepository).findById(groupId)
+            stubRole(memberId, currentGroup, GroupRole.OWNER)
             doReturn(null).whenever(userGroupRepository).findByGroupName(newName)
 
             // 여기서 save(any()) 매핑이 깨져서 에러가 났던 것임! 명확하게 any<UserGroup>() 지정
             doReturn(expectedGroup).whenever(userGroupRepository).save(any<UserGroup>())
 
             // when
-            val result = groupService.updateGroup(groupId, newName, "설명")
+            val result = groupService.updateGroup(groupId, memberId, newName, "설명")
 
             // then
             assertThat(result.groupName).isEqualTo(newName)
             verify(userGroupRepository).save(any())
+        }
+
+        @Test
+        @DisplayName("MEMBER가 그룹을 수정하려 하면 GROUP_OWNER_ONLY로 차단된다")
+        fun updateGroupFailWhenMember() {
+            val currentGroup = UserGroup(id = groupId, groupName = "기존이름")
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(currentGroup))
+            stubRole(memberId, currentGroup, GroupRole.MEMBER)
+
+            val exception = assertThrows<BusinessException> {
+                groupService.updateGroup(groupId, memberId, "수정된이름", "설명")
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.GROUP_OWNER_ONLY)
+            verify(userGroupRepository, never()).save(any<UserGroup>())
         }
     }
 
@@ -160,13 +180,167 @@ class UserGroupServiceTest {
             // given
             val targetGroup = UserGroup(id = groupId, groupName = "삭제그룹")
             whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(targetGroup))
+            stubRole(memberId, targetGroup, GroupRole.OWNER)
 
             // when
-            groupService.deleteGroup(groupId)
+            groupService.deleteGroup(groupId, memberId)
 
             // then
             verify(userGroupMemberRepository).deleteByGroup(targetGroup)
             verify(userGroupRepository).delete(targetGroup)
         }
+
+        @Test
+        @DisplayName("그룹에 속하지 않은 회원이 삭제하려 하면 GROUP_OWNER_ONLY로 차단된다")
+        fun deleteGroupFailWhenOutsider() {
+            val targetGroup = UserGroup(id = groupId, groupName = "삭제그룹")
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(targetGroup))
+            whenever(userGroupMemberRepository.findById(UserGroupMemberId(member = outsiderId, group = groupId)))
+                .doReturn(Optional.empty())
+
+            val exception = assertThrows<BusinessException> {
+                groupService.deleteGroup(groupId, outsiderId)
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.GROUP_OWNER_ONLY)
+            verify(userGroupRepository, never()).delete(any<UserGroup>())
+        }
+    }
+
+    @Nested
+    @DisplayName("멤버 추가 / 제거 / 조회 테스트")
+    inner class GroupMemberTest {
+
+        private val group = UserGroup(id = groupId, groupName = "CS 스터디")
+        private val targetEmail = "younghee@company.com"
+        private val targetEntity = MemberEntity(
+            id = targetId, email = targetEmail, password = "hashed", userName = "영희", role = "ROLE_MEMBER"
+        )
+
+        @Test
+        @DisplayName("OWNER가 가입된 이메일로 추가하면 MEMBER로 저장하고 대상의 인증 캐시를 파기한다")
+        fun addMemberSuccess() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            stubRole(memberId, group, GroupRole.OWNER)
+            whenever(memberRepository.findByEmail(targetEmail)).doReturn(targetEntity)
+            whenever(userGroupMemberRepository.existsById(UserGroupMemberId(member = targetId, group = groupId))).doReturn(false)
+            whenever(userGroupMemberRepository.save(any<UserGroupMember>())).thenAnswer { it.arguments[0] }
+
+            val result = groupService.addMemberByEmail(groupId, memberId, " $targetEmail ")
+
+            assertThat(result.memberId).isEqualTo(targetId)
+            assertThat(result.role).isEqualTo(GroupRole.MEMBER)
+            verify(userGroupMemberRepository).save(check { mapping ->
+                assertThat(mapping.member.id).isEqualTo(targetId)
+                assertThat(mapping.role).isEqualTo(GroupRole.MEMBER)
+            })
+            verify(userCacheRepository).deleteUserCache(targetEmail)
+        }
+
+        @Test
+        @DisplayName("가입되지 않은 이메일이면 MEMBER_EMAIL_NOT_FOUND")
+        fun addMemberFailUnknownEmail() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            stubRole(memberId, group, GroupRole.OWNER)
+            whenever(memberRepository.findByEmail("nobody@company.com")).doReturn(null)
+
+            val exception = assertThrows<BusinessException> {
+                groupService.addMemberByEmail(groupId, memberId, "nobody@company.com")
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.MEMBER_EMAIL_NOT_FOUND)
+        }
+
+        @Test
+        @DisplayName("이미 소속된 회원이면 ALREADY_JOINED_GROUP")
+        fun addMemberFailAlreadyJoined() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            stubRole(memberId, group, GroupRole.OWNER)
+            whenever(memberRepository.findByEmail(targetEmail)).doReturn(targetEntity)
+            whenever(userGroupMemberRepository.existsById(UserGroupMemberId(member = targetId, group = groupId))).doReturn(true)
+
+            val exception = assertThrows<BusinessException> {
+                groupService.addMemberByEmail(groupId, memberId, targetEmail)
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.ALREADY_JOINED_GROUP)
+        }
+
+        @Test
+        @DisplayName("MEMBER는 다른 회원을 추가할 수 없다")
+        fun addMemberFailWhenRequesterIsMember() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            stubRole(memberId, group, GroupRole.MEMBER)
+
+            val exception = assertThrows<BusinessException> {
+                groupService.addMemberByEmail(groupId, memberId, targetEmail)
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.GROUP_OWNER_ONLY)
+            verify(userGroupMemberRepository, never()).save(any<UserGroupMember>())
+        }
+
+        @Test
+        @DisplayName("OWNER가 MEMBER를 제거하면 매핑을 지우고 대상의 인증 캐시를 파기한다")
+        fun removeMemberSuccess() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            stubRole(memberId, group, GroupRole.OWNER)
+            val targetMapping = UserGroupMember(member = targetEntity, group = group, role = GroupRole.MEMBER)
+            whenever(userGroupMemberRepository.findById(UserGroupMemberId(member = targetId, group = groupId)))
+                .doReturn(Optional.of(targetMapping))
+
+            groupService.removeMember(groupId, memberId, targetId)
+
+            verify(userGroupMemberRepository).delete(targetMapping)
+            verify(userCacheRepository).deleteUserCache(targetEmail)
+        }
+
+        @Test
+        @DisplayName("OWNER 자신은 제거할 수 없다")
+        fun removeMemberFailWhenTargetIsOwner() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            stubRole(memberId, group, GroupRole.OWNER)
+
+            val exception = assertThrows<BusinessException> {
+                groupService.removeMember(groupId, memberId, memberId)
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.GROUP_OWNER_CANNOT_BE_REMOVED)
+            verify(userGroupMemberRepository, never()).delete(any<UserGroupMember>())
+        }
+
+        @Test
+        @DisplayName("그룹에 속하지 않은 회원은 멤버 목록을 볼 수 없다")
+        fun getMembersFailWhenOutsider() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            whenever(userGroupMemberRepository.findWithMemberByGroupId(groupId)).doReturn(
+                listOf(UserGroupMember(member = mockMemberEntity, group = group, role = GroupRole.OWNER))
+            )
+
+            val exception = assertThrows<BusinessException> {
+                groupService.getGroupMembers(groupId, outsiderId)
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.GROUP_MEMBER_ONLY)
+        }
+
+        @Test
+        @DisplayName("그룹 멤버는 멤버 목록과 역할을 볼 수 있다")
+        fun getMembersSuccess() {
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(group))
+            whenever(userGroupMemberRepository.findWithMemberByGroupId(groupId)).doReturn(
+                listOf(
+                    UserGroupMember(member = mockMemberEntity, group = group, role = GroupRole.OWNER),
+                    UserGroupMember(member = targetEntity, group = group, role = GroupRole.MEMBER)
+                )
+            )
+
+            val result = groupService.getGroupMembers(groupId, targetId)
+
+            assertThat(result).extracting("email").containsExactly("kyungbin@company.com", targetEmail)
+            assertThat(result).extracting("role").containsExactly(GroupRole.OWNER, GroupRole.MEMBER)
+        }
+    }
+
+    // 요청자의 그룹 내 역할을 스텁
+    private fun stubRole(requesterId: Long, group: UserGroup, role: GroupRole) {
+        val requester = if (requesterId == memberId) mockMemberEntity
+        else MemberEntity(id = requesterId, email = "u$requesterId@company.com", password = "hashed", role = "ROLE_MEMBER")
+        whenever(userGroupMemberRepository.findById(UserGroupMemberId(member = requesterId, group = group.id)))
+            .doReturn(Optional.of(UserGroupMember(member = requester, group = group, role = role)))
     }
 }

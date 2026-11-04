@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException
 
 class GlobalExceptionHandlerTest {
 
@@ -42,6 +43,9 @@ class GlobalExceptionHandlerTest {
 
         @GetMapping("/sample/unexpected")
         fun unexpected(): String = throw RuntimeException("내부 구현 상세 메시지")
+
+        @GetMapping("/sample/async-timeout")
+        fun asyncTimeout(): String = throw AsyncRequestTimeoutException()
     }
 
     private val mockMvc: MockMvc = MockMvcBuilders.standaloneSetup(SampleController())
@@ -84,5 +88,13 @@ class GlobalExceptionHandlerTest {
         mockMvc.perform(get("/sample/unexpected"))
             .andExpect(status().isInternalServerError)
             .andExpect(jsonPath("$.message").value(ErrorCode.INTERNAL_SERVER_ERROR.message))
+    }
+
+    @Test
+    @DisplayName("비동기 요청 제한 시간 초과는 500이 아닌 503으로 응답한다")
+    fun asyncTimeoutIs503() {
+        mockMvc.perform(get("/sample/async-timeout"))
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.status").value(503))
     }
 }
