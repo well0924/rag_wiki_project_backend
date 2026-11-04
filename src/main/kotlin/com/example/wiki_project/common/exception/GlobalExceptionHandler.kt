@@ -12,6 +12,7 @@ import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.multipart.MaxUploadSizeExceededException
@@ -99,6 +100,15 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.METHOD_NOT_ALLOWED)
             .body(ErrorResponse(status = 405, error = "METHOD_NOT_ALLOWED", message = "지원하지 않는 HTTP 메서드입니다."))
+    }
+
+    // 비동기(suspend) 요청 제한 시간 초과: 서버 오류(500)가 아니라 일시적 지연(503)으로 응답
+    @ExceptionHandler(AsyncRequestTimeoutException::class)
+    fun handleAsyncTimeout(e: AsyncRequestTimeoutException): ResponseEntity<ErrorResponse> {
+        log.warn("비동기 요청 제한 시간 초과")
+        return ResponseEntity
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(ErrorResponse(status = 503, error = "SERVICE_UNAVAILABLE", message = "응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."))
     }
 
     // 그 외 예상치 못한 런타임 예외 처리 (원인 추적을 위해 스택트레이스 로깅)
