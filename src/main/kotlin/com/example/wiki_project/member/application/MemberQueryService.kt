@@ -16,15 +16,12 @@ class MemberQueryService(
 ) {
 
     /**
-     * 이메일 기반 유저 그룹 ID 리스트 조회
-     * ROLE_ADMIN 권한을 가진 유저는 전사 문서 접근 권한이 있으므로
-     * 매핑 테이블(user_group_members)을 조회하지 않고 빈 리스트를 반환 (불필요한 쿼리 생략).
+     * 유저 그룹 ID 리스트 조회
+     * 관리자도 일반 회원과 같이 소속 그룹의 문서만 볼 수 있으므로 역할과 관계없이 매핑 테이블을 조회.
+     * isAdmin은 회원 관리 / 품질 모니터링 같은 관리자 기능의 접근 판단에만 사용.
      */
     fun findGroupIds(memberModel: MemberModel): MemberAuthInfo {
-        if (memberModel.role == Role.ROLE_ADMIN) {
-            return MemberAuthInfo(emptyList(), true)
-        }
         val mappings = userGroupMemberRepository.findByMemberId(memberModel.id!!)
-        return MemberAuthInfo(mappings.map { it.group.id!! }, false)
+        return MemberAuthInfo(mappings.map { it.group.id!! }, memberModel.role == Role.ROLE_ADMIN)
     }
 }

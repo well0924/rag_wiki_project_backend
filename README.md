@@ -7,7 +7,7 @@
 ## 📌 프로젝트 개요
 
 사내 문서를 업로드하면 Python FastAPI RAG 엔진이 벡터 인덱싱하고,
-임직원이 자연어로 질의하면 AI가 소속 부서 권한 기반으로 필터링된 답변을 반환하는 사내 위키 검색 시스템입니다.
+사용자가 자연어로 질의하면 AI가 소속 그룹(회사 팀 · 스터디 · 개인 공간)에 공개된 문서만으로 답변하는 위키 검색 시스템입니다.
 
 - **Python FastAPI AI 서버 저장소**: [rag_wiki_project_backend_ai](https://github.com/well0924/rag_wiki_project_backend_ai)
 
@@ -38,7 +38,7 @@
 
 | 구분 | Spring Boot (이 저장소) | FastAPI (AI 서버) |
 |---|---|---|
-| 인증 / 권한 | JWT, 구글 로그인, 부서 그룹 권한 판정 | 전달받은 그룹 ID로 검색 범위 제한 |
+| 인증 / 권한 | JWT, 구글 로그인, 그룹(OWNER / MEMBER) 권한 판정 | 전달받은 그룹 ID로 검색 범위 제한 |
 | 문서 | 업로드 검증, 텍스트 추출, 원본 저장, 상태 관리 | 청킹, 임베딩, pgvector 적재 |
 | 검색 | 검색 기록 / 피드백 저장 | 벡터 검색, LLM 답변 생성, 환각 방지 |
 
@@ -196,8 +196,8 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     FE->>SB: POST /api/v1/search {query}
-    SB->>SB: JWT에서 소속 그룹 / 관리자 여부 확인
-    SB->>AI: POST /api/v1/rag/search (query, userGroupIds, isAdmin)
+    SB->>SB: 인증 캐시(없으면 DB)에서 소속 그룹 확인
+    SB->>AI: POST /api/v1/rag/search (query, userGroupIds)
     AI-->>SB: answer + referencedChunkIds + sources
     SB->>DB: search_history 저장
     SB-->>FE: historyId + answer + sources (출처 문서, 유사도)

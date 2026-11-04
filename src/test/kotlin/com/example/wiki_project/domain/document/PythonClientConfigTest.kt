@@ -39,7 +39,7 @@ class PythonClientConfigTest {
     fun searchSendsInternalKey() = runTest {
         val client = clientReturning("""{"answer":"답변","referencedChunkIds":[1,2]}""")
 
-        val response = client.searchFromRAG("질문", listOf(1L), false)
+        val response = client.searchFromRAG("질문", listOf(1L))
 
         val request = capturedRequests.single()
         assertThat(request.url().path).isEqualTo("/api/v1/rag/search")
@@ -57,7 +57,7 @@ class PythonClientConfigTest {
                "sources":[{"documentId":3,"title":"휴가 규정","similarity":0.612}]}"""
         )
 
-        val response = client.searchFromRAG("연차 며칠?", listOf(1L), false)
+        val response = client.searchFromRAG("연차 며칠?", listOf(1L))
 
         assertThat(response.sources).hasSize(1)
         assertThat(response.sources[0].documentId).isEqualTo(3L)

@@ -154,19 +154,18 @@ class DocumentService(
      * 권한 기반 문서 단건 상세 조회
      */
     @Transactional(readOnly = true)
-    fun getDocumentById(documentId: Long, userGroupIds: List<Long>, isAdmin: Boolean): DocumentModel {
+    fun getDocumentById(documentId: Long, userGroupIds: List<Long>): DocumentModel {
         val entity = documentRepository.findById(documentId)
             .orElseThrow { BusinessException(ErrorCode.DOCUMENT_NOT_FOUND) }
 
         // 삭제(Soft Delete)된 문서는 조회 불가
         if (entity.isDeleted) throw BusinessException(ErrorCode.DOCUMENT_NOT_FOUND)
 
-        // [보안 가드] 어드민이 아니라면 유저의 소속 부서 그룹 권한 교집합 체크
-        if (!isAdmin) {
-            val hasPermission = documentPermissionRepository.hasReadPermission(documentId, userGroupIds)
-            if (!hasPermission) {
-                throw BusinessException(ErrorCode.UNAUTHORIZED_DOCUMENT_ACCESS) // "접근 권한이 없는 기밀 문서입니다."
-            }
+        // [보안 가드] 소속 그룹 중 하나라도 이 문서에 공개되어 있어야 함 (관리자도 예외 없음)
+        val hasPermission = userGroupIds.isNotEmpty() &&
+            documentPermissionRepository.hasReadPermission(documentId, userGroupIds)
+        if (!hasPermission) {
+            throw BusinessException(ErrorCode.UNAUTHORIZED_DOCUMENT_ACCESS) // "접근 권한이 없는 기밀 문서입니다."
         }
 
         return entity.toModel()
@@ -176,9 +175,12 @@ class DocumentService(
      * 권한 기반 접근 가능한 전체 문서 목록 조회
      */
     @Transactional(readOnly = true)
-    fun getAccessibleDocuments(userGroupIds: List<Long>, isAdmin: Boolean): List<DocumentModel> {
+    fun getAccessibleDocuments(userGroupIds: List<Long>): List<DocumentModel> {
+        // 소속 그룹이 없으면 볼 수 있는 문서도 없음 (빈 IN 절 쿼리 생략)
+        if (userGroupIds.isEmpty()) return emptyList()
+
         // 권한 조건은 조인 쿼리에서 처리
-        val entities = documentRepository.findAccessibleDocuments(userGroupIds, isAdmin)
+        val entities = documentRepository.findAccessibleDocuments(userGroupIds)
         return entities.map { it.toModel() }
     }
 
@@ -204,9 +206,9 @@ class DocumentService(
      * 문서 다운로드 요청
      */
     @Transactional(readOnly = true)
-    fun downloadDocument(documentId: Long, userGroupIds: List<Long>, isAdmin: Boolean): DocumentDownload {
+    fun downloadDocument(documentId: Long, userGroupIds: List<Long>): DocumentDownload {
         // 1. 단건 조회와 동일한 권한 검증 재사용
-        val document = getDocumentById(documentId, userGroupIds, isAdmin)
+        val document = getDocumentById(documentId, userGroupIds)
 
         // 2. 저장소에서 원본 파일 조회 (S3 도입 전 더미 URL 로 저장된 기존 문서는 파일이 없으므로 404)
         val resource = fileStorage.load(document.contentUrl)

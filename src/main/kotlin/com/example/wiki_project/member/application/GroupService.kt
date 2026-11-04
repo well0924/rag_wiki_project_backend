@@ -9,7 +9,6 @@ import com.example.wiki_project.member.domain.entity.UserGroupMemberId
 import com.example.wiki_project.member.domain.mapper.toEntity
 import com.example.wiki_project.member.domain.mapper.toModel
 import com.example.wiki_project.member.domain.model.GroupRole
-import com.example.wiki_project.member.domain.model.Role
 import com.example.wiki_project.member.domain.model.UserGroupModel
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
@@ -137,11 +136,6 @@ class GroupService(
 
         if (targetModel.isDeleted) {
             throw BusinessException(ErrorCode.ALREADY_WITHDRAWN_MEMBER)
-        }
-
-        // 관리자 배정(AdminService.assignGroup)과 같은 규칙 유지
-        if (targetModel.role == Role.ROLE_ADMIN) {
-            throw BusinessException(ErrorCode.ADMIN_CANNOT_BE_ASSIGNED_TO_GROUP)
         }
 
         if (userGroupMemberRepository.existsById(UserGroupMemberId(member = targetModel.id, group = groupId))) {

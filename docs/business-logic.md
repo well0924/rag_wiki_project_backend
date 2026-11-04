@@ -33,6 +33,7 @@ erDiagram
     user_group_members {
         bigint user_id PK, FK "복합 PK 선두 컬럼"
         bigint group_id PK, FK
+        varchar role "OWNER / MEMBER"
     }
     documents {
         bigint id PK
@@ -78,15 +79,24 @@ erDiagram
 
 ## 2. 역할과 권한
 
-### 역할
+> 2026-11-04에 사내 부서 위키에서 범용 그룹(회사 팀 · 스터디 · 개인 공간)으로 권한 모델을 바꿨습니다. 변경 전후 흐름은 [권한 모델 변경](permission-model-change.md)에 있습니다.
+
+### 서비스 역할
 
 | 역할 | 문서 열람 | 문서 업로드 | 문서 삭제 | 관리 기능 |
 |---|---|---|---|---|
 | `ROLE_MEMBER` | 소속 그룹에 공개된 문서만 | 소속 그룹에만 공개 가능 | 본인이 올린 문서만 | - |
-| `ROLE_ADMIN` | 전체 문서 | 모든 그룹에 공개 가능 | 모든 문서 | 권한 승격, 그룹 배정, 강제 탈퇴, 검색 기록 / 👎 답변 조회 |
+| `ROLE_ADMIN` (운영자) | 소속 그룹에 공개된 문서만 (일반 회원과 같음) | 소속 그룹에만 공개 가능 | 모든 문서 (신고 대응) | 권한 승격, 그룹 배정, 강제 탈퇴, 검색 품질 지표 / 👎 답변 조회 |
 
-- 관리자는 전체 문서를 보므로 그룹에 소속시키지 않습니다 (`ADMIN_CANNOT_BE_ASSIGNED_TO_GROUP`).
+### 그룹 안 역할
+
+| 역할 | 누가 | 할 수 있는 것 |
+|---|---|---|
+| `OWNER` | 그룹을 만든 사람 | 그룹 수정 · 삭제, 이메일로 멤버 추가, 멤버 제거, 문서 업로드 · 검색 |
+| `MEMBER` | OWNER가 추가한 사람 (또는 관리자 배정) | 문서 업로드 · 검색, 멤버 목록 조회 |
+
 - 권한 판정에 쓰는 `groupIds`, `isAdmin`은 JWT 클레임이 아니라 **Redis 인증 캐시(없으면 DB)의 최신 값**을 사용합니다. 그룹이 바뀌면 캐시만 지우면 다음 요청부터 즉시 반영됩니다.
+- `isAdmin`은 관리자 기능의 접근 판단에만 쓰고, 문서 권한 판정에는 쓰지 않습니다.
 
 ### 문서 접근 판정
 
@@ -94,19 +104,19 @@ erDiagram
 flowchart TD
     R["문서 요청<br/>(목록 · 상세 · 다운로드 · 검색)"] --> D{"삭제된 문서?"}
     D -->|예| NF["404 / 검색 제외"]
-    D -->|아니오| A{"관리자?"}
-    A -->|예| OK["허용"]
-    A -->|아니오| P{"문서의 공개 그룹과<br/>내 소속 그룹이 겹치나?"}
-    P -->|예| OK
+    D -->|아니오| E{"소속 그룹이 있나?"}
+    E -->|없음| EMPTY["403 / 빈 목록 · 빈 검색 결과"]
+    E -->|있음| P{"문서의 공개 그룹과<br/>내 소속 그룹이 겹치나?"}
+    P -->|예| OK["허용"]
     P -->|아니오| FB["403 / 목록·검색에서 제외"]
 ```
 
 | 기능 | 판정 위치 | 방식 |
 |---|---|---|
-| 문서 목록 | Spring `DocumentRepository.findAccessibleDocuments` | 권한 매핑 조인, 관리자는 조건 생략 |
+| 문서 목록 | Spring `DocumentRepository.findAccessibleDocuments` | 권한 매핑 조인 (관리자도 같은 조건) |
 | 상세 · 다운로드 | Spring `DocumentService.getDocumentById` | `hasReadPermission` 확인 후 403 |
 | RAG 검색 | AI 서버 검색 쿼리 | `EXISTS (document_permissions ...)` + `is_deleted = false` — 권한 없는 문서는 LLM 근거로도 쓰이지 않음 |
-| 업로드 | Spring `DocumentController` | 일반 회원은 공개 대상 그룹이 모두 내 소속 그룹이어야 함 |
+| 업로드 | Spring `DocumentController` | 공개 그룹 1개 이상, 모두 내 소속 그룹이어야 함 (관리자 포함) |
 | 삭제 | 도메인 `DocumentModel.delete` | 작성자 또는 관리자만 |
 
 ---
@@ -163,7 +173,7 @@ sequenceDiagram
 | 본인 탈퇴 | ✅ | ✅ | ✅ |
 | 강제 탈퇴 (관리자) | ✅ | ✅ | - (다음 요청에서 탈퇴 상태로 차단) |
 | 관리자 승격 | ✅ | ✅ (재로그인 유도) | - |
-| 그룹 배정 / 그룹 생성 / 그룹 삭제 | ✅ (해당 회원들) | - | - |
+| 그룹 배정 / 그룹 생성 / 그룹 삭제 / 멤버 추가 · 제거 | ✅ (해당 회원들) | - | - |
 | 재발급 시 토큰 불일치 | ✅ | ✅ | - |
 
 ---
@@ -172,23 +182,34 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    subgraph 회원
-        C["그룹 생성"] --> J["생성자 자동 가입"]
+    subgraph 누구나
+        C["그룹 생성"] --> O["생성자 = OWNER"]
+    end
+    subgraph "OWNER만"
+        ADD["이메일로 멤버 추가"]
+        RM["멤버 제거"]
     end
     subgraph 관리자
         AS["회원을 그룹에 배정"]
     end
-    J --> INV["해당 회원 인증 캐시 삭제<br/>→ 다음 요청부터 새 groupIds"]
-    AS --> CHK{"탈퇴 회원? 관리자?<br/>이미 소속?"}
-    CHK -->|아니오| SAVE["매핑 저장"] --> INV
-    CHK -->|예| ERR["400 / 404"]
+    O --> INV["해당 회원 인증 캐시 삭제<br/>→ 다음 요청부터 새 groupIds"]
+    ADD --> CHK{"가입된 이메일?<br/>탈퇴 회원? 이미 소속?"}
+    AS --> CHK
+    CHK -->|통과| SAVE["MEMBER로 저장"] --> INV
+    CHK -->|실패| ERR["400 / 404"]
+    RM --> OWN{"대상이 OWNER?"}
+    OWN -->|아니오| DEL["매핑 삭제"] --> INV
+    OWN -->|예| ERR2["400"]
 ```
 
 | 규칙 | 내용 |
 |---|---|
-| 그룹 이름 | 필수, 100자 이하, 중복 불가 (수정 시 자기 자신 제외) |
-| 그룹 생성 | 로그인한 회원 누구나 생성 가능, 생성자는 자동으로 구성원이 됨 |
-| 다른 회원 배정 | 관리자만 가능 (탈퇴 회원 · 관리자 · 이미 소속된 회원은 거부) |
+| 그룹 이름 | 필수, 100자 이하, 서비스 전체에서 중복 불가 (수정 시 자기 자신 제외) |
+| 그룹 생성 | 로그인한 회원 누구나 (관리자 포함), 생성자는 OWNER |
+| 그룹 수정 · 삭제 | OWNER만 (`GROUP_OWNER_ONLY`) |
+| 멤버 추가 | OWNER가 가입된 이메일로 바로 추가 (수락 단계 없음). 관리자 배정 API도 유지. 탈퇴 회원 · 이미 소속된 회원은 거부 |
+| 멤버 제거 | OWNER만, OWNER 자신은 제거 불가 |
+| 멤버 목록 | 그룹 소속이면 누구나 (`GROUP_MEMBER_ONLY`) |
 | 그룹 삭제 | 구성원 매핑을 먼저 지우고 그룹 삭제, 구성원 전원의 인증 캐시 삭제 |
 
 ---
@@ -241,7 +262,7 @@ flowchart LR
 |---|---|---|---|
 | `refresh:{email}` | Refresh Token | 14일 | 재발급 검증 (RTR) |
 | `blacklist:{accessToken}` | `logout` | Access Token 남은 유효 시간 | 로그아웃 / 탈퇴 토큰 차단 |
-| `user-cache:v2:{email}` | 회원 + groupIds + isAdmin (JSON) | 30분 | 요청마다 DB 조회 없이 인증 · 권한 판정 |
+| `user-cache:v3:{email}` | 회원 + groupIds + isAdmin (JSON) | 30분 | 요청마다 DB 조회 없이 인증 · 권한 판정 (v3: 관리자도 groupIds 포함) |
 | `oauth2:code:{code}` | Access + Refresh Token | 30초 | 구글 로그인 일회용 교환 코드 |
 | `document:upload:stream` | documentId, content, title … | 최근 약 1,000건 (MAXLEN) | 인덱싱 이벤트 (Consumer Group `fastapi-ai-group`) |
 | `document:upload:dlq` | 원본 필드 + 실패 사유 | 최근 1,000건 | 처리 불가 메시지 격리 |

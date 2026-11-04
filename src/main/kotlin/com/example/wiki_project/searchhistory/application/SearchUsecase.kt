@@ -19,12 +19,11 @@ class SearchUsecase(
     suspend fun executeSearch(
         memberId: Long,
         query: String,
-        userGroupIds: List<Long>,
-        isAdmin: Boolean
+        userGroupIds: List<Long>
     ): SearchResponse = withContext(Dispatchers.IO) { // 검색 기록 저장(블로킹 DB 작업)이 포함되므로 IO 디스패처에서 실행
 
         // 1. AI 서버에 권한 필터 검색 + 답변 생성 요청
-        val aiResponse = pythonAiClient.searchFromRAG(query, userGroupIds, isAdmin)
+        val aiResponse = pythonAiClient.searchFromRAG(query, userGroupIds)
 
         // 2. 검색 기록 저장 (피드백 / 품질 모니터링용)
         val historyId = searchHistoryService.recordSearchHistory(
