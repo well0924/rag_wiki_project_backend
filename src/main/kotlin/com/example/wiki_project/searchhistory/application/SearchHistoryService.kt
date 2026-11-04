@@ -2,6 +2,7 @@ package com.example.wiki_project.searchhistory.application
 
 import com.example.wiki_project.common.exception.BusinessException
 import com.example.wiki_project.common.exception.ErrorCode
+import com.example.wiki_project.searchhistory.application.dto.SearchQualityStats
 import com.example.wiki_project.searchhistory.domain.mapper.toEntity
 import com.example.wiki_project.searchhistory.domain.mapper.toModel
 import com.example.wiki_project.searchhistory.domain.model.SearchHistoryModel
@@ -96,5 +97,21 @@ class SearchHistoryService(
 
         val entities = searchHistoryRepository.findByFeedbackFalseOrderByIdDesc(pageable)
         return entities.map { it.toModel() }
+    }
+
+    /**
+     * [관리자 전용] 검색 품질 지표 (전체 검색 수, 👍 / 👎 건수와 비율)
+     */
+    @Transactional(readOnly = true)
+    fun getQualityStatsForAdmin(isAdmin: Boolean): SearchQualityStats {
+        if (!isAdmin) {
+            throw BusinessException(ErrorCode.ADMIN_ONLY)
+        }
+
+        return SearchQualityStats(
+            totalSearches = searchHistoryRepository.count(),
+            positiveCount = searchHistoryRepository.countByFeedback(true),
+            negativeCount = searchHistoryRepository.countByFeedback(false)
+        )
     }
 }

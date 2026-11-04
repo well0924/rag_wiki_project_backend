@@ -134,4 +134,41 @@ class SearchHistoryServiceTest {
             )
         }
     }
+
+    @Test
+    @DisplayName("품질 지표는 피드백을 남긴 기록만 분모로 비율을 계산한다")
+    fun qualityStatsUsesFeedbackOnlyAsDenominator() {
+        `when`(searchHistoryRepository.count()).thenReturn(10L)
+        `when`(searchHistoryRepository.countByFeedback(true)).thenReturn(3L)
+        `when`(searchHistoryRepository.countByFeedback(false)).thenReturn(1L)
+
+        val stats = searchHistoryService.getQualityStatsForAdmin(isAdmin = true)
+
+        Assertions.assertThat(stats.totalSearches).isEqualTo(10L)
+        Assertions.assertThat(stats.feedbackCount).isEqualTo(4L)
+        Assertions.assertThat(stats.positiveRate).isEqualTo(75.0)
+        Assertions.assertThat(stats.negativeRate).isEqualTo(25.0)
+    }
+
+    @Test
+    @DisplayName("피드백이 한 건도 없으면 비율은 null이다 (가짜 수치를 만들지 않음)")
+    fun qualityStatsRateIsNullWithoutFeedback() {
+        `when`(searchHistoryRepository.count()).thenReturn(5L)
+        `when`(searchHistoryRepository.countByFeedback(true)).thenReturn(0L)
+        `when`(searchHistoryRepository.countByFeedback(false)).thenReturn(0L)
+
+        val stats = searchHistoryService.getQualityStatsForAdmin(isAdmin = true)
+
+        Assertions.assertThat(stats.positiveRate).isNull()
+        Assertions.assertThat(stats.negativeRate).isNull()
+    }
+
+    @Test
+    @DisplayName("일반 회원이 품질 지표를 요청하면 차단한다")
+    fun qualityStatsFailWhenNotAdmin() {
+        val exception = assertThrows<BusinessException> {
+            searchHistoryService.getQualityStatsForAdmin(isAdmin = false)
+        }
+        Assertions.assertThat(exception.errorCode).isEqualTo(ErrorCode.ADMIN_ONLY)
+    }
 }
