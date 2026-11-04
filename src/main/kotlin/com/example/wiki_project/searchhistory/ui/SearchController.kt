@@ -24,7 +24,7 @@ class SearchController(
 
     /**
      * 권한 기반 RAG 자연어 검색
-     * - 인증 필터가 적재한 최신 groupIds / isAdmin을 그대로 FastAPI 메타데이터 필터링에 전달
+     * - 인증 필터가 적재한 최신 groupIds를 그대로 FastAPI 권한 필터에 전달 (관리자도 소속 그룹 문서만 검색)
      */
     @Operation(
         summary = "RAG 자연어 검색",
@@ -42,8 +42,7 @@ class SearchController(
         val response = searchUsecase.executeSearch(
             memberId = memberId,
             query = request.query.trim(),
-            userGroupIds = userDetails.groupIds,
-            isAdmin = userDetails.isAdmin
+            userGroupIds = userDetails.groupIds
         )
         return ResponseEntity.ok(response)
     }

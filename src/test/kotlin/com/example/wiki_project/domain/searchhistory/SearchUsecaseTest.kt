@@ -30,19 +30,19 @@ class SearchUsecaseTest {
             referencedChunkIds = listOf("11", "12"),
             sources = listOf(PythonSearchSource(documentId = 5L, title = "JPA 가이드", similarity = 0.72))
         )
-        org.mockito.kotlin.whenever(pythonAiClient.searchFromRAG("JPA 복합키", groupIds, false)).doReturn(aiResponse)
+        org.mockito.kotlin.whenever(pythonAiClient.searchFromRAG("JPA 복합키", groupIds)).doReturn(aiResponse)
         org.mockito.kotlin.whenever(
             searchHistoryService.recordSearchHistory(10L, "JPA 복합키", aiResponse.answer, aiResponse.referencedChunkIds)
         ).doReturn(55L)
 
         // when
-        val response = searchUsecase.executeSearch(memberId = 10L, query = "JPA 복합키", userGroupIds = groupIds, isAdmin = false)
+        val response = searchUsecase.executeSearch(memberId = 10L, query = "JPA 복합키", userGroupIds = groupIds)
 
         // then
         assertThat(response.historyId).isEqualTo(55L)
         assertThat(response.answer).isEqualTo("IdClass를 쓰시면 됩니다. [1]")
         assertThat(response.referencedChunkIds).containsExactly("11", "12")
         assertThat(response.sources).containsExactly(SearchSource(documentId = 5L, title = "JPA 가이드", similarity = 0.72))
-        verify(pythonAiClient).searchFromRAG("JPA 복합키", groupIds, false)
+        verify(pythonAiClient).searchFromRAG("JPA 복합키", groupIds)
     }
 }

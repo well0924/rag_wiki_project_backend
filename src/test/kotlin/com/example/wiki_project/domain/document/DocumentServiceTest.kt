@@ -260,30 +260,39 @@ class DocumentServiceTest {
 
             // when & then
             val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
-                documentService.getDocumentById(docId, myGroupIds, isAdmin = false)
+                documentService.getDocumentById(docId, myGroupIds)
             }
             assertThat(exception.errorCode).isEqualTo(ErrorCode.UNAUTHORIZED_DOCUMENT_ACCESS)
         }
 
         @Test
-        @DisplayName("어드민(isAdmin=true) 유저가 찌르면, 권한 매핑 테이블을 스캔하는 I/O 비용 없이 프리패스로 통과해야 한다")
-        fun getDocumentSuccessWhenAdminUser() {
+        @DisplayName("소속 그룹이 없으면 (관리자 포함) 권한 조회 없이 UNAUTHORIZED_DOCUMENT_ACCESS로 차단된다")
+        fun getDocumentFailWhenNoGroups() {
             // given
             val docId = 200L
             val documentEntity = DocumentEntity(
-                id = docId, title = "전사 공통 문서", contentUrl = "s3://...",
+                id = docId, title = "다른 그룹 문서", contentUrl = "s3://...",
                 docType = "MD", fileSize = 512L, createdBy = 888L, isDeleted = false
             )
 
             whenever(documentRepository.findById(docId)).thenReturn(Optional.of(documentEntity))
 
-            // when
-            val result = documentService.getDocumentById(docId, userGroupIds = emptyList(), isAdmin = true)
-
-            // then
-            assertThat(result.title).isEqualTo("전사 공통 문서")
-            // 검증: 어드민이므로 권한 레포지토리의 existsBy...는 단 한 번도 호출되지 않았어야 함 (성능 최적화 증명)
+            // when & then
+            val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
+                documentService.getDocumentById(docId, userGroupIds = emptyList())
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.UNAUTHORIZED_DOCUMENT_ACCESS)
+            // 빈 그룹 목록으로 IN 절 쿼리를 보내지 않음
             verify(documentPermissionRepository, times(0)).hasReadPermission(any(), any())
+        }
+
+        @Test
+        @DisplayName("소속 그룹이 없으면 문서 목록은 쿼리 없이 빈 목록이다")
+        fun getAccessibleDocumentsEmptyWhenNoGroups() {
+            val result = documentService.getAccessibleDocuments(emptyList())
+
+            assertThat(result).isEmpty()
+            verify(documentRepository, times(0)).findAccessibleDocuments(any())
         }
 
         @Test
@@ -298,7 +307,7 @@ class DocumentServiceTest {
             whenever(documentRepository.findById(docId)).thenReturn(Optional.of(deletedEntity))
 
             val exception = org.junit.jupiter.api.assertThrows<BusinessException> {
-                documentService.getDocumentById(docId, emptyList(), isAdmin = false)
+                documentService.getDocumentById(docId, emptyList())
             }
             assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_NOT_FOUND)
         }
@@ -417,7 +426,7 @@ class DocumentServiceTest {
             whenever(fileStorage.load("documents/abc.pdf")).thenReturn(resource)
 
             // when
-            val result = documentService.downloadDocument(docId, myGroups, isAdmin = false)
+            val result = documentService.downloadDocument(docId, myGroups)
 
             // then
             assertThat(result.fileName).isEqualTo("보고서.pdf")
@@ -437,7 +446,7 @@ class DocumentServiceTest {
             whenever(fileStorage.load(any())).thenReturn(null)
 
             // when & then
-            val exception = assertThrows<BusinessException> { documentService.downloadDocument(docId, myGroups, isAdmin = false) }
+            val exception = assertThrows<BusinessException> { documentService.downloadDocument(docId, myGroups) }
             assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_FILE_NOT_FOUND)
         }
     }

@@ -10,15 +10,15 @@ import java.time.LocalDateTime
 
 interface DocumentRepository: JpaRepository<DocumentEntity, Long> {
 
+    // 소속 그룹에 공개된 문서만 조회 (관리자도 예외 없음)
     @Query("""
         SELECT DISTINCT d FROM DocumentEntity d
-        LEFT JOIN DocumentPermissionJpaEntity p ON d.id = p.documentId
+        JOIN DocumentPermissionJpaEntity p ON d.id = p.documentId
         WHERE d.isDeleted = false
-        AND (:isAdmin = true OR p.groupId IN :groupIds)
+        AND p.groupId IN :groupIds
     """)
     fun findAccessibleDocuments(
-        @Param("groupIds") groupIds: List<Long>,
-        @Param("isAdmin") isAdmin: Boolean
+        @Param("groupIds") groupIds: List<Long>
     ): List<DocumentEntity>
 
     /**

@@ -48,13 +48,11 @@ class DocumentController(
         val uploaderId = customUserDetails.member.id
             ?: throw BusinessException(ErrorCode.MEMBER_NOT_FOUND)
 
-        // 권한 검증: 일반 회원은 자신이 소속된 그룹에만 문서를 공개할 수 있음
-        // 만약 일반 유저가 요청한 targetGroupIds가 자기가 소속된 그룹들(userDetails.groupIds)에 포함되지 않는다면 차단
-        if (!customUserDetails.isAdmin) { // 관리자는 검사 생략
-            val hasPermission = customUserDetails.groupIds.containsAll(request.targetGroupIds)
-            if (!hasPermission) {
-                throw BusinessException(ErrorCode.FORBIDDEN_DOCUMENT_ACCESS) // 403
-            }
+        // 권한 검증: 자신이 소속된 그룹에만 문서를 공개할 수 있음 (관리자도 예외 없음)
+        // 요청한 targetGroupIds가 자기가 소속된 그룹들(userDetails.groupIds)에 모두 포함되지 않으면 차단
+        val hasPermission = customUserDetails.groupIds.containsAll(request.targetGroupIds)
+        if (!hasPermission) {
+            throw BusinessException(ErrorCode.FORBIDDEN_DOCUMENT_ACCESS) // 403
         }
         require(files.isNotEmpty()) { "업로드할 파일이 비어있습니다." }
 
@@ -90,8 +88,7 @@ class DocumentController(
         @AuthenticationPrincipal userDetails: CustomUserDetails
     ): ResponseEntity<List<DocumentModel>> {
         val documents = documentService.getAccessibleDocuments(
-            userGroupIds = userDetails.groupIds,
-            isAdmin = userDetails.isAdmin
+            userGroupIds = userDetails.groupIds
         )
         return ResponseEntity.ok(documents)
     }
@@ -107,8 +104,7 @@ class DocumentController(
     ): ResponseEntity<DocumentModel> {
         val document = documentService.getDocumentById(
             documentId = documentId,
-            userGroupIds = userDetails.groupIds,
-            isAdmin = userDetails.isAdmin
+            userGroupIds = userDetails.groupIds
         )
         return ResponseEntity.ok(document)
     }
@@ -139,8 +135,7 @@ class DocumentController(
         // 서비스 호출 (권한 검증 + 저장소에서 원본 파일 조회)
         val download = documentService.downloadDocument(
             documentId,
-            user.groupIds,
-            user.isAdmin
+            user.groupIds
         )
 
         // 한글 파일명이 깨지지 않도록 RFC 5987 형식(filename*=UTF-8'')으로 인코딩

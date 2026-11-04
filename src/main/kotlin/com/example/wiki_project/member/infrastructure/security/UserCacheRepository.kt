@@ -14,7 +14,8 @@ class UserCacheRepository(
 ) {
     private val cacheTtlMs = 1800000L // 30분 (Millis)
 
-    private val cacheVersion = "v2"
+    // v3: 관리자도 소속 그룹 ID를 캐시에 담도록 변경 (v2의 관리자 캐시는 groupIds가 빈 목록이라 읽지 않음)
+    private val cacheVersion = "v3"
 
     fun saveUserCache(email: String, data: UserCacheData) {
         val jsonString = objectMapper.writeValueAsString(data)

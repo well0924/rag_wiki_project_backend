@@ -8,7 +8,6 @@ import com.example.wiki_project.member.domain.entity.UserGroupMemberId
 import com.example.wiki_project.member.domain.mapper.toEntity
 import com.example.wiki_project.member.domain.mapper.toModel
 import com.example.wiki_project.member.domain.model.MemberModel
-import com.example.wiki_project.member.domain.model.Role
 import com.example.wiki_project.member.infrastructure.MemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
 import com.example.wiki_project.member.infrastructure.UserGroupRepository
@@ -55,10 +54,6 @@ class AdminService(
 
         if (memberModel.isDeleted) {
             throw BusinessException(ErrorCode.ALREADY_WITHDRAWN_MEMBER)
-        }
-
-        if (memberModel.role == Role.ROLE_ADMIN) {
-            throw BusinessException(ErrorCode.ADMIN_CANNOT_BE_ASSIGNED_TO_GROUP)
         }
 
         val groupEntity = userGroupRepository.findById(command.groupId)

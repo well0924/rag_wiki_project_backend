@@ -40,8 +40,8 @@ class PythonClientConfig(
     /**
      * Python RAG 엔진에 검색 질의 요청 (코루틴 suspend 적용)
      */
-    suspend fun searchFromRAG(query: String, userGroupIds: List<Long>, isAdmin: Boolean): PythonSearchResponse {
-        val requestBody = PythonSearchRequest(query = query, userGroupIds = userGroupIds, isAdmin = isAdmin)
+    suspend fun searchFromRAG(query: String, userGroupIds: List<Long>): PythonSearchResponse {
+        val requestBody = PythonSearchRequest(query = query, userGroupIds = userGroupIds)
 
         return try {
             client.post()
