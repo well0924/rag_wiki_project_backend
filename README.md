@@ -1,4 +1,4 @@
-# RAG 기반 사내 위키 검색 에이전트 (Backend)
+# RAG 기반 그룹 위키 검색 에이전트 (Backend)
 
 > Kotlin · Spring Boot · Spring Security · JWT · Redis · PostgreSQL · Coroutines · Redis Streams · Spring Batch
 
@@ -6,10 +6,13 @@
 
 ## 📌 프로젝트 개요
 
-사내 문서를 업로드하면 Python FastAPI RAG 엔진이 벡터 인덱싱하고,
-사용자가 자연어로 질의하면 AI가 소속 그룹(회사 팀 · 스터디 · 개인 공간)에 공개된 문서만으로 답변하는 위키 검색 시스템입니다.
+그룹(회사 팀 · 스터디 · 개인 공간)에 문서를 업로드하면 Python FastAPI RAG 엔진이 벡터 인덱싱하고,
+사용자가 자연어로 질의하면 AI가 내가 속한 그룹에 공개된 문서만으로 답변하는 위키 검색 시스템입니다.
+그룹은 누구나 만들 수 있고, 만든 사람(OWNER)이 이메일로 멤버를 추가하거나 제외합니다.
 
+- **데모**: 배포 후 추가 예정
 - **Python FastAPI AI 서버 저장소**: [rag_wiki_project_backend_ai](https://github.com/well0924/rag_wiki_project_backend_ai)
+- **Next.js 프론트 저장소**: [rag_wiki_front](https://github.com/well0924/rag_wiki_front)
 
 ---
 
@@ -35,6 +38,7 @@
 ![rag_wiki 배포 구조](docs/images/architecture.png)
 
 > 점선 상자는 아직 구현 전(예정)입니다. 데이터 구조(ERD), 권한 규칙, 회원·그룹·문서 수명주기, Redis 키 구조는 [비즈니스 로직 상세](docs/business-logic.md)에 정리했습니다.
+> 사내 부서 위키에서 범용 그룹 워크스페이스로 바꾸면서 권한 모델이 어떻게 달라졌는지는 [권한 모델 변경](docs/permission-model-change.md)에 있습니다.
 
 | 구분 | Spring Boot (이 저장소) | FastAPI (AI 서버) |
 |---|---|---|
@@ -52,7 +56,7 @@ wiki_project/
 │   ├── exception/            ← 공통 예외, 에러코드
 │   └── batch/                ← documentHardDeleteJob (벡터 DB 정합성 배치)
 ├── member/
-│   ├── application/          ← MemberService, AdminService, AuthService
+│   ├── application/          ← MemberService, AuthService, GroupService(OWNER 권한), MemberQueryService, AdminService
 │   ├── domain/               ← MemberModel(data class), Entity, Mapper
 │   └── infrastructure/
 │       ├── security/         ← JWT, Filter, Provider, OAuth2, 로그인 교환 코드
@@ -94,6 +98,7 @@ flowchart TD
 | **JWT Blacklist** | 로그아웃/탈퇴 시 Access Token을 Redis에 TTL로 등록하여 재사용 차단 |
 | **RTR** | 재발급 시 구 Refresh Token 교체. 불일치 시 탈취 의심으로 토큰/캐시 즉시 파기 |
 | **Redis 캐시** | `UserCacheData(MemberModel + groupIds + isAdmin)` 통합 캐싱으로 매 요청 DB I/O 방지 |
+| **관리자 범위 제한** | `isAdmin`은 관리자 화면(`/admin/**`)과 검색 품질 지표에만 사용. 문서 열람·다운로드·검색은 관리자도 소속 그룹 기준 |
 | **Soft Delete 가드** | 일반/소셜 로그인 양쪽 Provider에서 동일한 탈퇴 계정 차단 로직 적용 |
 | **내부 API 분리** | AI 서버 전용 API(`/api/v1/internal/**`)는 공유 키로만 접근, 외부에서는 Caddy가 경로 자체를 차단 |
 
@@ -205,8 +210,10 @@ sequenceDiagram
 ```
 
 - 권한 필터, 유사도 하한, 출처 인용 강제 등 **환각 방지**는 AI 서버에서 처리합니다. ([AI 서버 README](https://github.com/well0924/rag_wiki_project_backend_ai#환각hallucination-방지))
-- 응답의 `sources`로 프론트가 답변 근거 문서를 보여 주고, 사용자는 원문을 내려받아 직접 검증할 수 있습니다.
+- 응답의 `sources`로 프론트가 답변 근거 문서와 유사도를 보여 줍니다. 원문은 다운로드 API(`GET /api/v1/documents/{id}/download`, 소속 그룹 검사)로 받을 수 있고, 프론트의 다운로드 버튼은 아직 없습니다.
 - 검색 기록과 피드백은 관리자 화면에서 품질이 낮은 답변(👎)을 찾아 문서를 보강하는 데 사용합니다.
+- 관리자 화면의 품질 지표(`GET /api/v1/search-histories/admin/stats`)는 피드백을 남긴 검색만 분모로 👍 / 👎 비율을 계산하고, 피드백이 없으면 비율을 비워 둡니다.
+- 검색 컨트롤러는 `suspend` 함수라 Spring MVC 비동기 요청으로 처리됩니다. 비동기 요청 시간 제한(`spring.mvc.async.request-timeout`, 70초)을 AI 서버 호출 제한(WebClient 60초)보다 길게 두고, 그래도 넘으면 503과 재시도 안내 메시지를 반환합니다.
 
 ---
 
@@ -298,6 +305,18 @@ data class UserCacheData(
 이 방식은 토큰이 브라우저 방문 기록과 서버 접근 로그에 남고, 다른 사이트로 이동할 때 `Referer` 헤더로도 전달될 수 있습니다.
 Redis에 토큰을 보관하고 30초짜리 일회용 코드만 넘긴 뒤 POST로 교환하도록 바꿨습니다. ([구글 로그인 — 일회용 코드 교환](#구글-로그인--일회용-코드-교환))
 
+### 5. 첫 검색만 시간 초과로 실패
+
+서버를 켠 뒤 첫 검색에서 `AsyncRequestTimeoutException`이 발생했습니다.
+`suspend` 컨트롤러는 Spring MVC 비동기 요청으로 처리되는데, 비동기 요청의 기본 시간 제한(30초)이 AI 서버 호출 제한(WebClient 60초)보다 짧았습니다.
+여기에 AI 서버가 첫 요청 때 임베딩 모델을 불러오느라 응답이 늦어지면서 30초를 넘겼습니다.
+
+| 조치 | 내용 |
+|---|---|
+| 시간 제한 정렬 | `spring.mvc.async.request-timeout=70s`로 WebClient(60초)보다 길게 설정 |
+| 실패 응답 | 시간 초과 시 500 대신 503과 "잠시 후 다시 시도" 안내 (`GlobalExceptionHandler`) |
+| 원인 제거 | AI 서버가 기동 시 임베딩 모델을 미리 불러오도록 변경 (AI 서버 저장소) |
+
 ### Redis CLI 한글 깨짐 (Windows PowerShell)
 
 Windows PowerShell 기본 인코딩(CP949)과 Python Worker의 UTF-8 디코딩 불일치로 한글이 깨지는 현상 발생.
@@ -325,7 +344,10 @@ AssertJ의 `assertThatThrownBy` 람다 안에서 `suspend` 함수 호출 불가 
 | 테스트 | 내용 |
 |---|---|
 | `MemberModelTest` / `UserGroupModelTest` | 도메인 비즈니스 규칙 단위 테스트 |
-| `AdminServiceTest` / `UserGroupServiceTest` | 권한 승격, 그룹 지정, 강제 추방, 그룹 관리 |
+| `AdminServiceTest` | 관리자 권한 승격, 그룹 지정, 강제 탈퇴 |
+| `UserGroupServiceTest` | 그룹 생성·수정·삭제, OWNER만 멤버 추가(이메일)·제외 가능, OWNER는 제외 불가, 그룹 밖 사용자의 멤버 조회 차단 |
+| `MemberQueryServiceTest` | 관리자도 일반 회원과 같이 소속 그룹 ID만 받음 |
+| `GlobalExceptionHandlerTest` | 검증 실패 400, 내부 예외 메시지 숨김, 비동기 시간 초과 503 |
 | `AuthServiceTest` | 로그인, 토큰 재발급, 탈취 의심 강제 파기, 소셜 로그인 코드 교환 |
 | `JwtTokenProviderTest` / `CustomUserDetailsServiceTest` | 토큰 발급·검증, 캐시 히트 시 DB 미조회 |
 | `CustomOAuth2UserServiceTest` | 이메일 미인증 거부, 허용 도메인(Workspace) 제한 |
@@ -335,7 +357,7 @@ AssertJ의 `assertThatThrownBy` 람다 안에서 `suspend` 함수 호출 불가 
 | `DocumentHardDeleteJobTest` | 청크 크기(100) 초과 시에도 페이지 건너뜀 없이 전부 영구 삭제 |
 | `StuckDocumentSchedulerTest` | 시간 초과 문서 FAILED 처리 |
 | `InternalDocumentApiSecurityTest` | 내부 API 공유 키 인증 |
-| `PythonClientConfigTest` / `SearchUsecaseTest` / `SearchHistoryServiceTest` | AI 서버 응답 파싱(sources 포함), 검색 기록 / 피드백 |
+| `PythonClientConfigTest` / `SearchUsecaseTest` / `SearchHistoryServiceTest` | AI 서버 응답 파싱(sources 포함), 검색 기록 / 피드백, 품질 지표 비율(피드백 0건이면 비율 없음) |
 | `UserGroupMemberRepositoryTest` | 복합키 저장 및 인덱스 조회 |
 
 ---
@@ -363,3 +385,4 @@ flowchart LR
 ## 🔗 관련 저장소
 
 - Python FastAPI RAG 서버: [rag_wiki_project_backend_ai](https://github.com/well0924/rag_wiki_project_backend_ai)
+- Next.js 프론트: [rag_wiki_front](https://github.com/well0924/rag_wiki_front)
