@@ -42,7 +42,7 @@ class DocumentController(
     suspend fun uploadDocument(
         @AuthenticationPrincipal customUserDetails: CustomUserDetails,
         @Valid @ModelAttribute request: DocumentUploadRequest, // 제목, 공개 대상 그룹 ID
-        @RequestPart("file") files: List<MultipartFile>
+        @RequestPart("file") file: MultipartFile // 요청 1건 = 파일 1개 (여러 파일은 클라이언트가 나눠서 요청)
     ): ResponseEntity<Map<String, Any>> {
 
         val uploaderId = customUserDetails.member.id
@@ -54,21 +54,19 @@ class DocumentController(
         if (!hasPermission) {
             throw BusinessException(ErrorCode.FORBIDDEN_DOCUMENT_ACCESS) // 403
         }
-        require(files.isNotEmpty()) { "업로드할 파일이 비어있습니다." }
+        require(!file.isEmpty) { "업로드할 파일이 비어있습니다." }
 
         // 요청 DTO와 업로드 파일 정보를 서비스 계층용 Command로 변환
-        val command = files.map { file ->
-            DocumentUploadCommand(
-                title = request.title,
-                originalFilename = file.originalFilename,
-                fileSize = file.size,
-                fileBytes = file.bytes,
-                uploaderId = uploaderId,
-                targetGroupIds = request.targetGroupIds
-            )
-        }
+        val command = DocumentUploadCommand(
+            title = request.title,
+            originalFilename = file.originalFilename,
+            fileSize = file.size,
+            fileBytes = file.bytes,
+            uploaderId = uploaderId,
+            targetGroupIds = request.targetGroupIds
+        )
 
-        val documentId = documentService.uploadDocuments(command)
+        val documentId = documentService.uploadDocument(command)
 
         return ResponseEntity.ok(
             mapOf(

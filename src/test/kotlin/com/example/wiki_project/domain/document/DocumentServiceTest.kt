@@ -372,40 +372,36 @@ class DocumentServiceTest {
     }
 
     @Nested
-    @DisplayName("문서 업로드(다중) 검증")
-    inner class UploadDocumentsValidation {
+    @DisplayName("문서 글자 수 상한 검증")
+    inner class ContentLengthValidation {
         @Test
-        @DisplayName("여러 개의 Command가 인입되면 각각 업로드가 수행되어야 한다")
-        fun uploadDocumentsSuccess() = runTest {
+        @DisplayName("추출한 텍스트가 상한을 넘으면 저장 / 발행 전에 DOCUMENT_TEXT_TOO_LONG 예외가 터져야 한다")
+        fun uploadDocumentFailWhenTextTooLong() = runTest {
             // given
-            val command1 = DocumentUploadCommand(title="doc1", originalFilename="file1.txt", fileSize=10L, fileBytes="a".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
-            val command2 = DocumentUploadCommand(title="doc2", originalFilename="file2.md", fileSize=10L, fileBytes="b".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
-            val commands = listOf(command1, command2)
+            val longText = "가".repeat(DocumentService.MAX_CONTENT_LENGTH + 1)
+            val command = DocumentUploadCommand(title="긴 문서", originalFilename="long.txt", fileSize=10L, fileBytes=longText.toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
 
-            // Mocking: save가 호출될 때마다 순차적으로 ID 리턴하도록 설정
-            whenever(documentCommandRepository.saveDocumentWithPermissions(any(), any(), any()))
-                .thenReturn(1L, 2L)
+            // when & then
+            val exception = assertThrows<BusinessException> { documentService.uploadDocument(command) }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.DOCUMENT_TEXT_TOO_LONG)
+            verifyNoInteractions(fileStorage, documentCommandRepository, reactiveRedisTemplate)
+        }
+
+        @Test
+        @DisplayName("추출한 텍스트가 상한과 같으면 업로드된다")
+        fun uploadDocumentSuccessAtLimit() = runTest {
+            // given
+            val limitText = "가".repeat(DocumentService.MAX_CONTENT_LENGTH)
+            val command = DocumentUploadCommand(title="상한 문서", originalFilename="limit.txt", fileSize=10L, fileBytes=limitText.toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
+            whenever(documentCommandRepository.saveDocumentWithPermissions(any(), any(), any())).thenReturn(1L)
             whenever(reactiveRedisTemplate.opsForStream<String, String>()).thenReturn(reactiveStreamOperations)
             whenever(reactiveStreamOperations.add(any<StringRecord>(), any<XAddOptions>())).thenReturn(Mono.just(RecordId.of("1-0")))
 
             // when
-            val resultIds = documentService.uploadDocuments(commands)
+            val resultId = documentService.uploadDocument(command)
 
             // then
-            assertThat(resultIds).containsExactly(1L, 2L)
-            verify(documentCommandRepository, times(2)).saveDocumentWithPermissions(any(), any(), any())
-        }
-
-        @Test
-        @DisplayName("여러 파일 중 하나라도 검증에 실패하면 앞선 정상 파일도 저장하지 않아야 한다 (부분 저장 방지)")
-        fun uploadDocumentsFailWhenAnyInvalid() = runTest {
-            // given
-            val valid = DocumentUploadCommand(title="doc1", originalFilename="file1.txt", fileSize=10L, fileBytes="a".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
-            val invalid = DocumentUploadCommand(title="doc2", originalFilename="file2.exe", fileSize=10L, fileBytes="b".toByteArray(), uploaderId=1L, targetGroupIds=listOf(1L))
-
-            // when & then
-            assertThrows<BusinessException> { documentService.uploadDocuments(listOf(valid, invalid)) }
-            verifyNoInteractions(documentCommandRepository, reactiveRedisTemplate)
+            assertThat(resultId).isEqualTo(1L)
         }
     }
 

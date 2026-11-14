@@ -41,6 +41,9 @@ class DocumentService(
         // - '~' 근사 트리밍: 정확히 자르지 않고 내부 노드 단위로 잘라 XADD 비용을 낮춤
         val STREAM_ADD_OPTIONS: XAddOptions = XAddOptions.maxlen(1000).approximateTrimming(true)
         private val ALLOWED_DOC_TYPES = setOf("TXT", "PDF", "DOCX", "MD")
+        // 추출 텍스트 상한: 본문 전체가 Redis Streams 이벤트에 실리므로(maxmemory 100MB, 최근 1,000건 유지) 한 건의 크기를 제한
+        // - 한글 20만 자 ≈ UTF-8 약 600KB, 일반 업무 문서 수십 쪽 분량
+        const val MAX_CONTENT_LENGTH = 200_000
     }
 
     /**
@@ -53,17 +56,9 @@ class DocumentService(
     )
 
     /**
-    * 문서 업로드 (다중)
-    * - 모든 파일의 형식 검증 / 텍스트 추출을 먼저 끝낸 뒤 저장하여,
-    *   일부 파일 실패 시 앞선 파일만 DB에 남는 부분 저장을 방지
-    **/
-    suspend fun uploadDocuments(commends:List<DocumentUploadCommand>):List<Long> = withContext(Dispatchers.IO) {
-        val prepared = commends.map { prepareUpload(it) }
-        prepared.map { saveAndPublish(it) }
-    }
-
-    /**
-     * 문서 업로드
+     * 문서 업로드 (요청 1건 = 파일 1개)
+     * - 여러 파일은 클라이언트가 파일마다 요청을 나눠 보냄 (파일마다 제목이 다르고, 서로 독립이라 부분 성공 허용)
+     * - 결정 배경: docs/decision-log.md "단일 파일 업로드"
      **/
     suspend fun uploadDocument(command: DocumentUploadCommand): Long = withContext(Dispatchers.IO) {
         saveAndPublish(prepareUpload(command))
@@ -82,6 +77,11 @@ class DocumentService(
 
         // 텍스트가 없는 문서는 저장 전에 거절 (UPLOADED 상태로 방치되는 문서 방지)
         val content = documentTextExtractor.extract(docType, command.fileBytes)
+
+        // 글자 수 상한 초과 시 저장 전에 거절 (Redis Streams 메모리 보호)
+        if (content.length > MAX_CONTENT_LENGTH) {
+            throw BusinessException(ErrorCode.DOCUMENT_TEXT_TOO_LONG)
+        }
         return PreparedUpload(command, docType, content)
     }
 
