@@ -2,14 +2,25 @@ name: Backend Deploy
 
 # 서버(EC2) 준비 전까지는 수동 실행만 허용 (Actions 탭 → Backend Deploy → Run workflow)
 # 서버 준비 후 자동 배포로 전환하려면 아래 push 트리거 주석 해제
-# 필요 Secrets: EC2_HOST, EC2_USER, EC2_SSH_KEY
+# 필요 Secrets: EC2_HOST, EC2_USER, EC2_SSH_KEY,
+#              AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, EC2_SECURITY_GROUP_ID
 on:
   workflow_dispatch:
   # push:
   #   branches: [ main ]
 
+# 배포가 동시에 두 번 돌면 보안 그룹 규칙 추가/삭제가 서로 꼬이므로 한 번에 하나만 실행
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2 # EC2 리전과 다르면 변경
+
 jobs:
-  # Jib으로 이미지 빌드 → GHCR 푸시 → EC2에서 compose 갱신
+  # Jib으로 이미지 빌드 → GHCR 푸시 → (보안 그룹 22번 임시 개방) → EC2에서 compose 갱신 → (임시 규칙 삭제)
+  # - SSH(22)는 평소 관리자 IP만 허용. 러너 IP는 실행마다 달라서, 배포하는 동안만 러너 IP를 열고 바로 닫음
+  # - 결정 배경: docs/decision-log.md "배포 시에만 러너 IP 임시 허용"
   deploy:
     runs-on: ubuntu-latest
     permissions:
@@ -34,6 +45,23 @@ jobs:
           -Djib.to.auth.username=${{ github.actor }}
           -Djib.to.auth.password=${{ secrets.GITHUB_TOKEN }}
 
+      # 이미지 빌드가 끝난 뒤에 열어서 22번이 열려 있는 시간을 최소화
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Allow runner IP on SSH (temporary)
+        id: open-ssh
+        run: |
+          RUNNER_IP=$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')
+          echo "RUNNER_IP=$RUNNER_IP" >> "$GITHUB_ENV"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "${{ secrets.EC2_SECURITY_GROUP_ID }}" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}/32,Description=github-actions-deploy}]"
+
       - name: Copy compose files to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -55,3 +83,11 @@ jobs:
             docker compose pull backend
             docker compose up -d
             docker image prune -f
+
+      # 배포 성공/실패와 관계없이 임시 규칙 삭제 (규칙을 추가한 경우에만)
+      - name: Revoke runner IP on SSH
+        if: always() && steps.open-ssh.outcome == 'success'
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${{ secrets.EC2_SECURITY_GROUP_ID }}" \
+            --protocol tcp --port 22 --cidr "${RUNNER_IP}/32"
