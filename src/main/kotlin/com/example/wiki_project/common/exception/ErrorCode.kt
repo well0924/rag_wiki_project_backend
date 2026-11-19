@@ -17,7 +17,7 @@ enum class ErrorCode(val status: HttpStatus, val message: String) {
     // User Group
     GROUP_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 유저 그룹입니다."),
     ALREADY_JOINED_GROUP(HttpStatus.BAD_REQUEST,"이미 가입된 그룹입니다."),
-    DUPLICATE_GROUP_NAME(HttpStatus.BAD_REQUEST,"유저 그룹이 중복이 됩니다."),
+    DUPLICATE_GROUP_NAME(HttpStatus.BAD_REQUEST,"이미 같은 이름의 그룹을 만들었습니다. 다른 이름을 입력해 주세요."),
     GROUP_OWNER_ONLY(HttpStatus.FORBIDDEN, "그룹 OWNER만 할 수 있는 작업입니다."),
     GROUP_MEMBER_ONLY(HttpStatus.FORBIDDEN, "그룹에 속한 회원만 조회할 수 있습니다."),
     MEMBER_EMAIL_NOT_FOUND(HttpStatus.NOT_FOUND, "가입되지 않은 이메일입니다."),

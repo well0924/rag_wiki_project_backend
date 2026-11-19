@@ -5,7 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 
 @Repository
-interface UserGroupRepository: JpaRepository<UserGroup, Long> {
-
-    fun findByGroupName(groupName: String): UserGroup?
-}
+interface UserGroupRepository: JpaRepository<UserGroup, Long>
+// 그룹 이름 전체 조회(findByGroupName)는 제거: 이름은 OWNER 기준으로만 중복 검사 (UserGroupMemberRepository)

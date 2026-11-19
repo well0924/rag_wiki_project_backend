@@ -3,6 +3,7 @@ package com.example.wiki_project.domain.member
 import com.example.wiki_project.member.domain.entity.MemberEntity
 import com.example.wiki_project.member.domain.entity.UserGroup
 import com.example.wiki_project.member.domain.entity.UserGroupMember
+import com.example.wiki_project.member.domain.model.GroupRole
 import com.example.wiki_project.member.infrastructure.UserGroupMemberRepository
 import org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.DisplayName
@@ -82,5 +83,34 @@ class UserGroupMemberRepositoryTest @Autowired constructor(
         // 정렬 성능 최적화와 별개로 데이터 정합성이 일치하는지 검증
         val groupIds = mappings.map { it.group.id!! }
         assertThat(groupIds).containsExactlyInAnyOrder(group1.id, group2.id)
+    }
+
+    @Test
+    @DisplayName("그룹 이름 중복 검사는 OWNER 기준이다: 다른 사람이 만든 같은 이름과 MEMBER로 속한 그룹은 세지 않고, 제외할 그룹은 뺀다")
+    fun countGroupsByMemberRoleAndNameCountsOnlyOwnedGroups() {
+        // given
+        val owner = MemberEntity(email = "owner@company.com", password = "password", userName = "OWNER")
+        val other = MemberEntity(email = "other@company.com", password = "password", userName = "다른사람")
+        val myStudy = UserGroup(groupName = "스프링 스터디")
+        val othersStudy = UserGroup(groupName = "스프링 스터디") // 다른 사람이 만든 같은 이름 (전체 유니크 제약이 없어야 저장됨)
+        listOf(owner, other, myStudy, othersStudy).forEach { entityManager.persist(it) }
+
+        userGroupMemberRepository.save(UserGroupMember(member = owner, group = myStudy, role = GroupRole.OWNER))
+        userGroupMemberRepository.save(UserGroupMember(member = other, group = othersStudy, role = GroupRole.OWNER))
+        // owner가 다른 사람의 그룹에 MEMBER로도 속해 있음 → OWNER 기준 검사에서는 세지 않아야 함
+        userGroupMemberRepository.save(UserGroupMember(member = owner, group = othersStudy, role = GroupRole.MEMBER))
+        entityManager.flush()
+        entityManager.clear()
+
+        // when & then
+        // 1. 생성 시(제외 그룹 없음): 내가 OWNER인 "스프링 스터디"는 1개
+        assertThat(userGroupMemberRepository.countGroupsByMemberRoleAndName(owner.id!!, GroupRole.OWNER, "스프링 스터디", 0L))
+            .isEqualTo(1L)
+        // 2. 수정 시 자기 자신을 제외하면 0개
+        assertThat(userGroupMemberRepository.countGroupsByMemberRoleAndName(owner.id!!, GroupRole.OWNER, "스프링 스터디", myStudy.id!!))
+            .isEqualTo(0L)
+        // 3. 내가 OWNER가 아닌 이름은 0개
+        assertThat(userGroupMemberRepository.countGroupsByMemberRoleAndName(owner.id!!, GroupRole.OWNER, "없는 그룹", 0L))
+            .isEqualTo(0L)
     }
 }
