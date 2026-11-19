@@ -10,9 +10,42 @@
 사용자가 자연어로 질의하면 AI가 내가 속한 그룹에 공개된 문서만으로 답변하는 위키 검색 시스템입니다.
 그룹은 누구나 만들 수 있고, 만든 사람(OWNER)이 이메일로 멤버를 추가하거나 제외합니다.
 
-- **데모**: 배포 후 추가 예정
 - **Python FastAPI AI 서버 저장소**: [rag_wiki_project_backend_ai](https://github.com/well0924/rag_wiki_project_backend_ai)
 - **Next.js 프론트 저장소**: [rag_wiki_front](https://github.com/well0924/rag_wiki_front)
+- **의사결정 기록**: [decision-log](docs/decision-log.md) (선택지와 고른 이유, 감수한 점)
+
+---
+
+## 🎬 데모
+
+| 항목 | 내용 |
+|---|---|
+| 시연 영상 | [YouTube](<!-- TODO: 영상 링크 -->) (약 ○분) |
+| 배포 주소 | <!-- TODO: 프론트 주소 --> |
+| 체험 계정 | `<!-- TODO: demo-b 이메일 -->` / 비밀번호는 <!-- TODO: 공개 방식 --> (일반 멤버 권한) |
+| 운영 시간 | 비용 절감을 위해 **매일 새벽 2시에 서버를 중지**합니다. 접속이 안 되면 ○시 이후에 다시 시도해 주세요. |
+
+**영상에서 보여 주는 것**
+
+| 계정 | 소속 그룹 |
+|---|---|
+| demo-a | 경영지원팀(OWNER), 플랫폼개발팀(OWNER) |
+| demo-b | 플랫폼개발팀(MEMBER) |
+
+1. demo-a가 플랫폼개발팀에 문서 2개를 업로드 → 처리 상태가 `COMPLETED`로 바뀜
+2. demo-a: "연차는 며칠이야?" → 경영지원팀 문서를 출처로 답변
+3. demo-a: "캐시 기본 TTL은 얼마야?" → **방금 올린 문서**를 출처로 답변
+4. demo-b: "연차는 며칠이야?" → 경영지원팀 소속이 아니라서 **찾을 수 없다고 답함** (그룹별 검색 범위)
+5. demo-b: "배포는 언제 해?" → 플랫폼개발팀 문서로 답변
+6. "주차 규정은 어떻게 돼?" → 어느 문서에도 없어서 지어내지 않고 찾을 수 없다고 답함 (환각 방지)
+
+**체험 계정으로 해 볼 수 있는 질문 (플랫폼개발팀 문서)**
+- "배포는 언제 해?"
+- "P1 장애는 몇 분 안에 대응해야 해?"
+- "PR은 몇 줄 이하로 올려야 해?"
+- "연차는 며칠이야?" → 소속 그룹 밖의 문서라 찾을 수 없다고 답함
+
+> 체험 계정은 일반 멤버라 그룹 관리 기능은 쓸 수 없습니다. 그룹을 직접 만들어 보고 싶다면 회원가입 후 이용해 주세요.
 
 ---
 
@@ -166,11 +199,23 @@ sequenceDiagram
 Spring MVC 위에서 코루틴을 사용할 때 `ThreadLocal` 기반의 SecurityContext가 스레드 전환 시 유실되는 문제를,
 **인증 완료 후 불변 Command 객체만 비동기 영역으로 전달**하는 방식으로 해결했습니다.
 
+### 업로드 제한
+
+여러 파일을 고르면 프론트가 **파일 1개당 요청 1번**으로 차례대로 보냅니다. 한 파일이 실패해도 나머지는 올라가고, 파일마다 결과가 따로 보입니다. ([결정 기록](docs/decision-log.md))
+
+| 항목 | 제한 | 검사 위치 |
+|---|---|---|
+| 형식 | TXT, MD, PDF, DOCX | 프론트 + 서버 (확장자 화이트리스트) |
+| 파일 크기 | 5MB | 프론트 + 서버 (`spring.servlet.multipart.max-file-size`, 환경변수로 조정) |
+| 한 번에 고를 수 있는 파일 | 5개 | 프론트 |
+| 제목 | 100자 | 프론트 + 서버 |
+| 추출된 글자 수 | 200,000자 | 서버 (넘으면 저장 전에 거부 → 임베딩 비용과 처리 시간 상한) |
+
 ### 실패 대응
 
 | 상황 | 처리 |
 |---|---|
-| 다중 업로드 중 일부 파일이 형식 오류 / 텍스트 없음 | 모든 파일 검증·추출을 먼저 끝낸 뒤 저장 → 일부만 저장되는 상황 방지 |
+| 파일 형식 오류 / 텍스트 없음 / 글자 수 초과 | 저장 전에 검증·추출을 끝내고 거부 → 원본, DB, 스트림 어디에도 남지 않음 |
 | 원본 저장 후 DB 저장 실패 | 저장한 원본 파일 삭제 (고아 파일 방지) |
 | DB 저장 후 Streams 발행 실패 | 문서를 `FAILED`로 전환하고 503 응답 (UPLOADED 방치 방지) |
 | AI 서버 처리 실패 | AI 서버가 최대 3회 재시도 후 DLQ로 격리, 재시도 성공 시 `FAILED → COMPLETED` 복구 |
@@ -214,6 +259,12 @@ sequenceDiagram
 - 검색 기록과 피드백은 관리자 화면에서 품질이 낮은 답변(👎)을 찾아 문서를 보강하는 데 사용합니다.
 - 관리자 화면의 품질 지표(`GET /api/v1/search-histories/admin/stats`)는 피드백을 남긴 검색만 분모로 👍 / 👎 비율을 계산하고, 피드백이 없으면 비율을 비워 둡니다.
 - 검색 컨트롤러는 `suspend` 함수라 Spring MVC 비동기 요청으로 처리됩니다. 비동기 요청 시간 제한(`spring.mvc.async.request-timeout`, 70초)을 AI 서버 호출 제한(WebClient 60초)보다 길게 두고, 그래도 넘으면 503과 재시도 안내 메시지를 반환합니다.
+
+### 알려진 한계 — 질문 표현에 따라 검색이 빗나감
+
+시연 준비 중 "배포는 언제 해?"는 답하는데 **"정기 배포는 언제 해?"는 관련 문서를 찾지 못하는** 경우를 발견했습니다.
+유사도 하한(0.3)을 넘는 청크가 없어서, 환각 방지 규칙에 따라 "문서에서 찾을 수 없다"고 답한 것입니다.
+원인 후보(임베딩 모델, 청크 크기, 키워드 검색 부재)를 바로 고치기보다 **질문 세트로 먼저 측정**하기로 했습니다. 개선 선택지와 순서는 [결정 기록](docs/decision-log.md)에 있습니다.
 
 ---
 
@@ -345,20 +396,20 @@ AssertJ의 `assertThatThrownBy` 람다 안에서 `suspend` 함수 호출 불가 
 |---|---|
 | `MemberModelTest` / `UserGroupModelTest` | 도메인 비즈니스 규칙 단위 테스트 |
 | `AdminServiceTest` | 관리자 권한 승격, 그룹 지정, 강제 탈퇴 |
-| `UserGroupServiceTest` | 그룹 생성·수정·삭제, OWNER만 멤버 추가(이메일)·제외 가능, OWNER는 제외 불가, 그룹 밖 사용자의 멤버 조회 차단 |
+| `UserGroupServiceTest` | 그룹 생성·수정·삭제, 그룹 이름은 내가 만든(OWNER) 그룹 안에서만 중복 불가, OWNER만 멤버 추가(이메일)·제외 가능, OWNER는 제외 불가, 그룹 밖 사용자의 멤버 조회 차단 |
 | `MemberQueryServiceTest` | 관리자도 일반 회원과 같이 소속 그룹 ID만 받음 |
 | `GlobalExceptionHandlerTest` | 검증 실패 400, 내부 예외 메시지 숨김, 비동기 시간 초과 503 |
 | `AuthServiceTest` | 로그인, 토큰 재발급, 탈취 의심 강제 파기, 소셜 로그인 코드 교환 |
 | `JwtTokenProviderTest` / `CustomUserDetailsServiceTest` | 토큰 발급·검증, 캐시 히트 시 DB 미조회 |
 | `CustomOAuth2UserServiceTest` | 이메일 미인증 거부, 허용 도메인(Workspace) 제한 |
 | `OAuth2SuccessHandlerTest` / `OAuth2LoginCodeRepositoryTest` | 리다이렉트 URL에 토큰 미포함, 코드 1회 사용·TTL (실제 Redis) |
-| `DocumentServiceTest` | 업로드 검증, 원본 저장/롤백, 발행 실패 시 FAILED, 권한 가드, 다운로드 |
+| `DocumentServiceTest` | 업로드 검증, 글자 수 상한(초과 시 저장 없이 거부), 원본 저장/롤백, 발행 실패 시 FAILED, 권한 가드, 다운로드 |
 | `DocumentTextExtractorTest` / `LocalFileStorageTest` | 형식별 텍스트 추출, 경로 조작 차단 |
 | `DocumentHardDeleteJobTest` | 청크 크기(100) 초과 시에도 페이지 건너뜀 없이 전부 영구 삭제 |
 | `StuckDocumentSchedulerTest` | 시간 초과 문서 FAILED 처리 |
 | `InternalDocumentApiSecurityTest` | 내부 API 공유 키 인증 |
 | `PythonClientConfigTest` / `SearchUsecaseTest` / `SearchHistoryServiceTest` | AI 서버 응답 파싱(sources 포함), 검색 기록 / 피드백, 품질 지표 비율(피드백 0건이면 비율 없음) |
-| `UserGroupMemberRepositoryTest` | 복합키 저장 및 인덱스 조회 |
+| `UserGroupMemberRepositoryTest` | 복합키 저장 및 인덱스 조회, OWNER 기준 그룹 이름 중복 조회 (남의 그룹·MEMBER 그룹·수정 중인 자기 그룹 제외) |
 
 ---
 
@@ -368,8 +419,12 @@ AssertJ의 `assertThatThrownBy` 람다 안에서 `suspend` 함수 호출 불가 
 flowchart LR
     PR["PR / main push"] --> CI["CI<br/>pgvector + Redis 서비스 위에서 전체 테스트"]
     D["deploy 워크플로<br/>(수동 실행)"] --> JIB["Jib 이미지 빌드<br/>ghcr.io/well0924/wiki-backend"]
-    JIB --> EC2["EC2 단일 서버<br/>docker compose pull backend && up -d"]
+    JIB --> OPEN["보안 그룹에 러너 IP 임시 허용<br/>(SSH 22)"]
+    OPEN --> EC2["EC2 단일 서버<br/>docker compose pull backend && up -d"]
+    EC2 --> CLOSE["러너 IP 허용 제거<br/>(실패해도 항상 실행)"]
 ```
+
+SSH(22)는 평소 관리자 IP에만 열어 둡니다. GitHub Actions 러너는 실행할 때마다 IP가 바뀌므로, 배포하는 동안만 그 IP를 보안 그룹에 추가하고 끝나면 지웁니다. 22번을 전체에 여는 방법 대신 이 방식을 고른 이유는 [결정 기록](docs/decision-log.md)에 있습니다.
 
 `deploy/` 디렉터리에 단일 서버 구성이 있습니다.
 
