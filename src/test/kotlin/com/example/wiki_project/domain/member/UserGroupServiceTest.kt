@@ -61,7 +61,8 @@ class UserGroupServiceTest {
             val expectedGroup = UserGroup(id = groupId, groupName = groupName, description = description)
 
             // doReturn().whenever() 스타일로 안전하게 선언하고 any에 명확한 타입(제네릭) 명시
-            doReturn(null).whenever(userGroupRepository).findByGroupName(groupName)
+            doReturn(0L).whenever(userGroupMemberRepository)
+                .countGroupsByMemberRoleAndName(memberId, GroupRole.OWNER, groupName, 0L)
             doReturn(Optional.of(mockMemberEntity)).whenever(memberRepository).findById(memberId)
 
             // any<UserGroup>() 처럼 타입을 지정해서 Mockito가 확실히 인지하게 만듦
@@ -86,17 +87,38 @@ class UserGroupServiceTest {
         }
 
         @Test
-        @DisplayName("그룹 생성 시 이미 존재하는 그룹명이면 DUPLICATE_GROUP_NAME 예외가 발생한다")
+        @DisplayName("내가 OWNER인 그룹 중 같은 이름이 있으면 DUPLICATE_GROUP_NAME 예외가 발생하고 저장하지 않는다")
         fun createGroupFailDuplicateName() {
             // given
             val duplicateName = "이미있는그룹"
-            whenever(userGroupRepository.findByGroupName(duplicateName)).doReturn(UserGroup(id = 1L, groupName = duplicateName))
+            whenever(userGroupMemberRepository.countGroupsByMemberRoleAndName(memberId, GroupRole.OWNER, duplicateName, 0L))
+                .doReturn(1L)
 
             // when & then
             val exception = assertThrows<BusinessException> {
                 groupService.createGroup(memberId, duplicateName, "설명")
             }
             assertThat(exception.errorCode).isEqualTo(ErrorCode.DUPLICATE_GROUP_NAME)
+            verify(userGroupRepository, never()).save(any<UserGroup>())
+        }
+
+        @Test
+        @DisplayName("중복 검사는 요청한 회원이 OWNER인 그룹만 대상으로 한다 (다른 사람이 만든 같은 이름은 허용)")
+        fun createGroupChecksOnlyOwnedGroups() {
+            // given: 다른 회원이 같은 이름을 만들었더라도, 내가 OWNER인 그룹 중에는 없음 → 0
+            val sharedName = "스프링 스터디"
+            doReturn(0L).whenever(userGroupMemberRepository)
+                .countGroupsByMemberRoleAndName(memberId, GroupRole.OWNER, sharedName, 0L)
+            doReturn(Optional.of(mockMemberEntity)).whenever(memberRepository).findById(memberId)
+            doReturn(UserGroup(id = groupId, groupName = sharedName)).whenever(userGroupRepository).save(any<UserGroup>())
+            whenever(userGroupMemberRepository.save(any<UserGroupMember>())).thenAnswer { it.arguments[0] }
+
+            // when
+            val result = groupService.createGroup(memberId, sharedName, null)
+
+            // then: 서비스 전체 이름 조회 없이, 내 OWNER 그룹 기준으로만 검사
+            assertThat(result.groupName).isEqualTo(sharedName)
+            verify(userGroupMemberRepository).countGroupsByMemberRoleAndName(memberId, GroupRole.OWNER, sharedName, 0L)
         }
     }
 
@@ -142,7 +164,9 @@ class UserGroupServiceTest {
 
             doReturn(Optional.of(currentGroup)).whenever(userGroupRepository).findById(groupId)
             stubRole(memberId, currentGroup, GroupRole.OWNER)
-            doReturn(null).whenever(userGroupRepository).findByGroupName(newName)
+            // 수정 중인 그룹 자신(groupId)은 중복 검사에서 제외
+            doReturn(0L).whenever(userGroupMemberRepository)
+                .countGroupsByMemberRoleAndName(memberId, GroupRole.OWNER, newName, groupId)
 
             // 여기서 save(any()) 매핑이 깨져서 에러가 났던 것임! 명확하게 any<UserGroup>() 지정
             doReturn(expectedGroup).whenever(userGroupRepository).save(any<UserGroup>())
@@ -153,6 +177,23 @@ class UserGroupServiceTest {
             // then
             assertThat(result.groupName).isEqualTo(newName)
             verify(userGroupRepository).save(any())
+        }
+
+        @Test
+        @DisplayName("내가 OWNER인 다른 그룹과 같은 이름으로 수정하면 DUPLICATE_GROUP_NAME으로 차단된다")
+        fun updateGroupFailDuplicateOwnedName() {
+            val currentGroup = UserGroup(id = groupId, groupName = "기존이름")
+            val duplicateName = "내다른그룹"
+            whenever(userGroupRepository.findById(groupId)).doReturn(Optional.of(currentGroup))
+            stubRole(memberId, currentGroup, GroupRole.OWNER)
+            whenever(userGroupMemberRepository.countGroupsByMemberRoleAndName(memberId, GroupRole.OWNER, duplicateName, groupId))
+                .doReturn(1L)
+
+            val exception = assertThrows<BusinessException> {
+                groupService.updateGroup(groupId, memberId, duplicateName, "설명")
+            }
+            assertThat(exception.errorCode).isEqualTo(ErrorCode.DUPLICATE_GROUP_NAME)
+            verify(userGroupRepository, never()).save(any<UserGroup>())
         }
 
         @Test

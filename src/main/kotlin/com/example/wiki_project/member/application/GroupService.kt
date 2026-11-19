@@ -31,10 +31,9 @@ class GroupService(
      */
     @Transactional
     fun createGroup(memberId: Long, groupName: String, description: String?): UserGroupModel {
-        // 중복 그룹명 검증
-        if (userGroupRepository.findByGroupName(groupName) != null) {
-            throw BusinessException(ErrorCode.DUPLICATE_GROUP_NAME)
-        }
+        // 중복 그룹명 검증: 내가 OWNER인 그룹 중에서만 검사 (다른 사람과는 같은 이름 허용)
+        // - 결정 배경: docs/decision-log.md "그룹 이름 중복 규칙"
+        requireUniqueOwnedGroupName(memberId, groupName, excludeGroupId = NO_GROUP)
 
         // 생성 주체인 회원이 존재하는지 검증 및 Entity 확보
         val memberEntity = memberRepository.findById(memberId)
@@ -85,11 +84,8 @@ class GroupService(
         val groupEntity = findGroup(groupId)
         requireOwner(groupId, requesterId)
 
-        // 변경하려는 이름이 이미 존재하는지 유효성 체크 (단, 내 현재 그룹명은 제외)
-        val existingGroup = userGroupRepository.findByGroupName(newGroupName)
-        if (existingGroup != null && existingGroup.id != groupId) {
-            throw BusinessException(ErrorCode.DUPLICATE_GROUP_NAME)
-        }
+        // 내가 OWNER인 다른 그룹과 이름이 겹치는지 검사 (수정 중인 그룹 자신은 제외)
+        requireUniqueOwnedGroupName(requesterId, newGroupName, excludeGroupId = groupId)
 
         // 엔티티를 도메인 모델로 변환
         val currentModel = groupEntity.toModel()
@@ -212,5 +208,24 @@ class GroupService(
         if (mapping?.role != GroupRole.OWNER) {
             throw BusinessException(ErrorCode.GROUP_OWNER_ONLY)
         }
+    }
+
+    // 회원이 OWNER인 그룹 중 같은 이름이 있으면 거절 (excludeGroupId: 수정 중인 그룹 자신)
+    // - 같은 회원이 버튼을 연달아 누르는 경우의 동시 생성까지는 막지 않음 (DB 제약 없음, 영향 작아 감수)
+    private fun requireUniqueOwnedGroupName(memberId: Long, groupName: String, excludeGroupId: Long) {
+        val count = userGroupMemberRepository.countGroupsByMemberRoleAndName(
+            memberId = memberId,
+            role = GroupRole.OWNER,
+            groupName = groupName,
+            excludeGroupId = excludeGroupId
+        )
+        if (count > 0) {
+            throw BusinessException(ErrorCode.DUPLICATE_GROUP_NAME)
+        }
+    }
+
+    companion object {
+        // 그룹 생성 시에는 제외할 그룹이 없음 (IDENTITY 키는 1부터 시작하므로 0은 어떤 그룹과도 겹치지 않음)
+        private const val NO_GROUP = 0L
     }
 }
