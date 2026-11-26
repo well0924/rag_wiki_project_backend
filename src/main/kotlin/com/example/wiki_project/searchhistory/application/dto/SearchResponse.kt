@@ -15,5 +15,7 @@ data class SearchResponse(
 data class SearchSource(
     val documentId: Long,
     val title: String,
-    val similarity: Double
+    val similarity: Double,
+    // 이 문서가 공개된 그룹 중 요청자가 속한 그룹 이름 (출처 칩에 "· 경영지원팀"처럼 표시)
+    val groupNames: List<String> = emptyList()
 )

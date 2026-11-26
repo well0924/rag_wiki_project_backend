@@ -408,7 +408,8 @@ AssertJ의 `assertThatThrownBy` 람다 안에서 `suspend` 함수 호출 불가 
 | `DocumentHardDeleteJobTest` | 청크 크기(100) 초과 시에도 페이지 건너뜀 없이 전부 영구 삭제 |
 | `StuckDocumentSchedulerTest` | 시간 초과 문서 FAILED 처리 |
 | `InternalDocumentApiSecurityTest` | 내부 API 공유 키 인증 |
-| `PythonClientConfigTest` / `SearchUsecaseTest` / `SearchHistoryServiceTest` | AI 서버 응답 파싱(sources 포함), 검색 기록 / 피드백, 품질 지표 비율(피드백 0건이면 비율 없음) |
+| `PythonClientConfigTest` / `SearchUsecaseTest` / `SearchHistoryServiceTest` | AI 서버 응답 파싱(sources 포함), 출처별 공개 그룹 이름(근거 없으면 조회 생략), 검색 기록 / 피드백, 품질 지표 비율(피드백 0건이면 비율 없음) |
+| `DocumentPermissionRepositoryTest` | 출처의 공개 그룹 이름은 요청자가 속한 그룹만 반환 (다른 그룹 이름 노출 방지) |
 | `UserGroupMemberRepositoryTest` | 복합키 저장 및 인덱스 조회, OWNER 기준 그룹 이름 중복 조회 (남의 그룹·MEMBER 그룹·수정 중인 자기 그룹 제외) |
 
 ---

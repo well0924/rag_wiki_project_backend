@@ -1,5 +1,6 @@
 package com.example.wiki_project.searchhistory.application
 
+import com.example.wiki_project.document.infrastructure.DocumentPermissionRepository
 import com.example.wiki_project.document.infrastructure.client.PythonClientConfig
 import com.example.wiki_project.searchhistory.application.dto.SearchResponse
 import com.example.wiki_project.searchhistory.application.dto.SearchSource
@@ -10,7 +11,8 @@ import org.springframework.stereotype.Service
 @Service
 class SearchUsecase(
     private val pythonAiClient: PythonClientConfig,
-    private val searchHistoryService: SearchHistoryService
+    private val searchHistoryService: SearchHistoryService,
+    private val documentPermissionRepository: DocumentPermissionRepository
 ) {
 
     /**
@@ -33,12 +35,23 @@ class SearchUsecase(
             referencedChunkIds = aiResponse.referencedChunkIds
         )
 
-        // 3. 답변 + 출처 + 피드백용 historyId 반환
+        // 3. 출처 문서마다 공개 그룹 이름 붙이기 (내가 속한 그룹만, 출처가 없으면 조회 생략)
+        val groupNamesByDocument = findMyGroupNames(aiResponse.sources.map { it.documentId }, userGroupIds)
+
+        // 4. 답변 + 출처 + 피드백용 historyId 반환
         SearchResponse(
             historyId = historyId,
             answer = aiResponse.answer,
             referencedChunkIds = aiResponse.referencedChunkIds,
-            sources = aiResponse.sources.map { SearchSource(it.documentId, it.title, it.similarity) }
+            sources = aiResponse.sources.map {
+                SearchSource(it.documentId, it.title, it.similarity, groupNamesByDocument[it.documentId].orEmpty())
+            }
         )
+    }
+
+    private fun findMyGroupNames(documentIds: List<Long>, userGroupIds: List<Long>): Map<Long, List<String>> {
+        if (documentIds.isEmpty() || userGroupIds.isEmpty()) return emptyMap()
+        return documentPermissionRepository.findGroupNamesForDocuments(documentIds.distinct(), userGroupIds)
+            .groupBy({ it.documentId }, { it.groupName })
     }
 }
